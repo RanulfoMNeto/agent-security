@@ -258,7 +258,11 @@ printf 'not json' | agent-secret-scan; echo "exit=$?"
    with `cat .env`. Expected: denied by permission settings.
 4. Ask Claude to run `rm -rf somedir`. Expected: denied.
 5. Paste a synthetic key, such as the token generated above, into a prompt. Expected:
-   `UserPromptSubmit operation blocked by hook`.
+   `UserPromptSubmit operation blocked by hook`. Claude Code shows the blocked prompt back
+   to you; it is never sent to the model.
+6. Run `claude -p --permission-mode bypassPermissions` and ask for a command that writes a
+   file (for example, `touch probe`). Expected: denied exactly as in default mode, because
+   bypass mode is disabled.
 
 ### Codex
 
@@ -320,7 +324,9 @@ The rules restrict the agents only. Open the file in your own terminal or editor
 2. **`Bash` rules match command text.** Equivalent forms such as `find … -delete`, a
    script, or another program are not matched.
 3. **Detection is pattern-based.** Secrets with no recognizable format pass. Tool output
-   and file contents read by the agent are not scanned.
+   and file contents read by the agent are not scanned. gitleaks' own OpenAI rule (8.30.1)
+   also misses a key whose last character is `-`, because the rule requires a word
+   boundary there. That affects roughly 1 in 64 keys.
 4. **`.env.example` and similar files are unreadable** by the agents, because deny rules
    can't have exceptions.
 5. **Codex can delete files inside the workspace.** Its sandbox confines writes, including
