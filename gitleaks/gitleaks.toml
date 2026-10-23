@@ -1,0 +1,12 @@
+# gitleaks configuration used by agent-secret-scan.
+#
+# Installed to /etc/agent-security/gitleaks.toml (root-owned) and always passed with
+# --config, which takes precedence over a repository's own .gitleaks.toml.
+#
+# It defines no rules of its own: the rule set is the default one shipped with the pinned
+# gitleaks release (OpenAI, Anthropic, GitHub, AWS, private keys and many other providers),
+# maintained upstream by the gitleaks project.
+
+[extend]
+# Load gitleaks' built-in default configuration.
+useDefault = true

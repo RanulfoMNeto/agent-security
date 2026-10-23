@@ -1,0 +1,61 @@
+# BEGIN agent-security
+#
+# Codex security baseline from ~/projects/agent-security (see README.md).
+#
+# Merge this block into ~/.codex/config.toml *before the first [table] header*:
+# `default_permissions` is a top-level key, and TOML assigns any key that follows a table
+# header to that table. Paths are absolute because permission profiles need absolute paths.
+
+# Sandbox profile used for every command Codex runs (replaces `sandbox_mode`; do not set both).
+default_permissions = "agent-security"
+
+[permissions.agent-security]
+description = "Workspace write access with credential files unreadable."
+# Start from the built-in workspace profile: read the machine, write only the workspace.
+extends = ":workspace"
+
+# Credential files and directories outside the workspace: no read and no write access.
+[permissions.agent-security.filesystem]
+"/home/ranulfo/.ssh" = "deny"
+"/home/ranulfo/.aws" = "deny"
+"/home/ranulfo/.azure" = "deny"
+"/home/ranulfo/.config/gcloud" = "deny"
+"/home/ranulfo/.kube" = "deny"
+"/home/ranulfo/.docker/config.json" = "deny"
+"/home/ranulfo/.netrc" = "deny"
+"/home/ranulfo/.git-credentials" = "deny"
+"/home/ranulfo/.npmrc" = "deny"
+"/home/ranulfo/.pypirc" = "deny"
+"/home/ranulfo/.config/gh/hosts.yml" = "deny"
+"/home/ranulfo/.claude/.credentials.json" = "deny"
+"/home/ranulfo/.codex/auth.json" = "deny"
+
+# Environment files inside every workspace root, including .env.example and similar.
+[permissions.agent-security.filesystem.":workspace_roots"]
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+
+[shell_environment_policy]
+# Remove variables whose names contain KEY, SECRET or TOKEN from command environments.
+ignore_default_excludes = false
+
+# Block prompts and tool calls (shell, apply_patch, MCP) that contain literal credentials.
+# Non-managed hooks run only after you review and trust them with /hooks inside Codex.
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/usr/local/bin/agent-secret-scan"
+timeout = 10
+statusMessage = "Scanning prompt for credentials"
+
+[[hooks.PreToolUse]]
+matcher = ""
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "/usr/local/bin/agent-secret-scan"
+timeout = 10
+statusMessage = "Scanning tool call for credentials"
+
+# END agent-security
