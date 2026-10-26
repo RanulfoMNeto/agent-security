@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A staged install downloads gitleaks and verifies it against the SHA-256 pinned in
+      # config/gitleaks.release. It needs no root and does not touch the runner.
+      - name: Fetch the pinned gitleaks
+        run: DESTDIR="$RUNNER_TEMP/stage" ./install.sh install
+      - name: Run the repository tests
+        run: GITLEAKS_BIN="$RUNNER_TEMP/stage/opt/agent-security/bin/gitleaks" ./tests/run.sh
