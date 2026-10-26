@@ -25,7 +25,7 @@ The exact rules, paths and variable names are in [controls](docs/controls.md).
 ## Install
 
 ```sh
-git clone <repository-url> && cd agent-security
+git clone https://github.com/RanulfoMNeto/agent-security.git && cd agent-security
 ./tests/run.sh               # optional: repository tests, no root required
 sudo ./install.sh install    # installs the scanner and both policies
 ./verify.sh                  # run from a regular terminal; --live also starts agent sessions
@@ -49,7 +49,8 @@ or editor. Commit regularly: agents can change files inside the project.
 | Platform | Linux (x86-64, arm64), macOS, WSL2. Validated on Ubuntu 26.04; macOS, WSL2 and arm64 follow the vendors' documentation. Native Windows is not supported |
 | Claude Code | 2.1.295 or later (validated 2.1.309) |
 | Codex CLI | 0.138.0 or later (validated 0.163.0) |
-| Tools | `bash`, `curl`, `tar`, `sha256sum` or `shasum`, `jq` at `/usr/bin/jq`. `python3` is optional for the installer and required by `verify.sh`. Linux also needs `bubblewrap` and `socat` (`apt-get install bubblewrap socat jq`) |
+| Tools | `bash`, `curl`, `tar`, `sha256sum` or `shasum`, `jq` at `/usr/bin/jq`. Linux also needs `bubblewrap` and `socat` (`apt-get install bubblewrap socat jq`) |
+| Python | `python3` is required by `verify.sh`. Python 3.11 or later enables the installer's TOML validation (skipped otherwise) and is required by `tests/run.sh` |
 
 The installer checks these first and reports what is missing.
 
@@ -91,6 +92,8 @@ Changing or removing the policy requires root.
 
 - [Controls](docs/controls.md): every interception, block and restriction, per agent
 - [Operations](docs/operations.md): update, customize, deploy, verify, Ubuntu AppArmor
+- [Contributing](CONTRIBUTING.md): tests, policy files and commit conventions
+- [Security policy](SECURITY.md): how to report a vulnerability
 
 ## Repository layout
 
@@ -102,3 +105,7 @@ Changing or removing the policy requires root.
 | `config/` | gitleaks configuration and pinned release |
 | `docs/` | Documentation |
 | `tests/` | Repository tests (`tests/run.sh`) and the sandbox probe used by `verify.sh` |
+
+## License
+
+[MIT](LICENSE)
