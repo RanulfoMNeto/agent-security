@@ -55,4 +55,23 @@ for asset in linux_x64 linux_arm64 darwin_x64 darwin_arm64; do echo "not a relea
 refuse "rejects a tarball with the wrong SHA-256"     env -u GITLEAKS_BIN DESTDIR="$D" GITLEAKS_MIRROR="file://$T/mirror" "$ROOT/install.sh" install
 refuse "installs nothing after a hash mismatch"       test -e "$D/opt/agent-security/bin/agent-secret-scan"
 
+# A download that matches the pinned hash is installed. A stand-in release replaces the real one,
+# in a copy of the repository whose pinned hashes match it.
+sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+R=$T/pinned-repo; M=$T/valid-mirror; D=$T/download-root
+mkdir -p "$R/config" "$M/v$VERSION" "$D" "$T/standin"
+printf '#!/bin/sh\necho %s\n' "$VERSION" > "$T/standin/gitleaks"; chmod +x "$T/standin/gitleaks"
+{
+  echo "VERSION=$VERSION"
+  for asset in linux_x64 linux_arm64 darwin_x64 darwin_arm64; do
+    tar -czf "$M/v$VERSION/gitleaks_${VERSION}_$asset.tar.gz" -C "$T/standin" gitleaks
+    echo "SHA256_$asset=$(sha "$M/v$VERSION/gitleaks_${VERSION}_$asset.tar.gz")"
+  done
+} > "$R/config/gitleaks.release"
+cp "$ROOT/install.sh" "$R/"
+ln -s "$ROOT/bin" "$ROOT/claude" "$ROOT/codex" "$R/"
+ln -s "$ROOT/config/gitleaks.toml" "$R/config/"
+check  "installs a download that matches the pinned hash" env -u GITLEAKS_BIN DESTDIR="$D" GITLEAKS_MIRROR="file://$M" "$R/install.sh" install
+check  "the downloaded gitleaks is installed"         test -x "$D/opt/agent-security/bin/gitleaks"
+
 finish installer

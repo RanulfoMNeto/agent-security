@@ -148,8 +148,9 @@ fetch_gitleaks() { # fetch_gitleaks DEST: the pinned binary, from GITLEAKS_BIN, 
     say "Downloading gitleaks $VERSION ($ASSET)"
     curl -fsSL --retry 3 -o "$WORK/$tarball" "$GITLEAKS_MIRROR/v$VERSION/$tarball" || die "download failed: $GITLEAKS_MIRROR/v$VERSION/$tarball"
     [[ $(sha256_of "$WORK/$tarball") == "${!hash_var}" ]] || die "SHA-256 mismatch for $tarball. Nothing was installed."
-    tar -xzf "$WORK/$tarball" -C "$WORK" gitleaks
-    mv "$WORK/gitleaks" "$1"
+    mkdir "$WORK/release"
+    tar -xzf "$WORK/$tarball" -C "$WORK/release" gitleaks
+    mv "$WORK/release/gitleaks" "$1"
   fi
   chmod 0755 "$1"
   "$1" version 2>/dev/null | grep -qx "$VERSION" || die "gitleaks must be version $VERSION."
