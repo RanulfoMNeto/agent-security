@@ -1,0 +1,14 @@
+# Placeholders that Claude Code's Linux sandbox creates in the working directory for the
+# paths it protects. They are empty and not part of this repository.
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.gitmodules
+/.idea
+/.mcp.json
+/.profile
+/.ripgreprc
+/.vscode
+/.zprofile
+/.zshrc
+/.claude/
