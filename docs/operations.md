@@ -9,71 +9,86 @@ sudo ./install.sh install    # idempotent: replaces the installed files
 ./verify.sh
 ```
 
-Claude Code reloads managed settings when they change; restart sessions to be sure. Codex reads
-its files at start-up.
+Claude Code reloads managed settings when they change; restart sessions to apply them at once.
+Codex reads its files at start-up.
 
-**gitleaks:** in `config/gitleaks.release`, change `VERSION` and replace the four SHA-256 values
-with the ones in the release's `gitleaks_<version>_checksums.txt`; then run the three commands above.
+**gitleaks.** In `config/gitleaks.release`, change `VERSION` and replace the four SHA-256 values
+with those in the release's `gitleaks_<version>_checksums.txt`. Then run the commands above.
 
 ## Change or add a rule
 
-Edit the files in the repository. The credential list exists once per tool (`Read(...)` rules in
-`claude/managed-settings.d/10-agent-security.json`, `deny_read` in `codex/requirements.toml`);
-`./tests/run.sh` fails if they differ. Then `sudo ./install.sh install` and `./verify.sh`. Managed
-Codex hooks are trusted by policy, so nothing has to be re-approved.
+Edit the files in the repository. The credential list exists once per agent: the `Read(...)` rules
+in `claude/managed-settings.d/10-agent-security.json` and `deny_read` in `codex/requirements.toml`.
+`./tests/run.sh` fails when they differ. Then run `sudo ./install.sh install` and `./verify.sh`.
+Managed Codex hooks are trusted by policy and need no approval.
 
-To customize for a company, fork the repository, keep `./tests/run.sh` green, and change what you
-need: credential paths, extra Claude Code settings (any `*.json` added to
+To maintain a customized distribution, fork the repository, keep `./tests/run.sh` passing and
+change what is needed: credential paths, additional Claude Code settings (any `*.json` added to
 `claude/managed-settings.d/` is installed), or a mirror for the gitleaks download.
 
 ## Handle a false positive
 
-- **Preferred:** do not put the value in the prompt or the code; reference it through an
+- **Preferred:** keep the value out of the prompt and the code. Reference it through an
   environment variable or a secret manager.
-- **If a value must be allowed:** add an allowlist to `config/gitleaks.toml` (see the
+- **When a value must be allowed:** add an allowlist to `config/gitleaks.toml` (see the
   [gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration)), open a pull
-  request, and reinstall.
-- These bypasses are disabled on purpose: inline `gitleaks:allow` comments, and a repository's
-  own `.gitleaks.toml` or `.gitleaksignore`.
+  request and reinstall.
+- Inline `gitleaks:allow` comments and a repository's own `.gitleaks.toml` or `.gitleaksignore`
+  are not honored.
 
 ## Deploy to many machines
 
-`install.sh` is idempotent and non-interactive, so a configuration tool can run
-`sudo ./install.sh install`. To produce files for a package or a configuration-management tool
-instead, stage them:
+`install.sh` is idempotent and non-interactive, so a configuration-management tool can run
+`sudo ./install.sh install`. To produce files for a package or a configuration-management tool,
+stage them:
 
 ```sh
 DESTDIR=/tmp/agent-security-stage ./install.sh install    # no root, no change to the system
 ```
 
 The staged tree has the final layout (`/opt/agent-security`, `/etc/claude-code`, `/etc/codex`) and
-every file is a copy of one in the repository. Staging skips the dependency checks and the
-self-test and cannot probe the target machine, so it never adds the Claude Code socket overlay on
-its own: pass `UNIX_SOCKET_OVERLAY=yes` for machines that need it (see
-[below](#ubuntu-2404-and-apparmor)). Run `./verify.sh` on a real machine after deployment.
+every file is a copy of a repository file. Staging skips the dependency checks and the self-test
+and does not probe the target machine, so it adds the Claude Code socket overlay only when
+`UNIX_SOCKET_OVERLAY=yes` is set (see [below](#ubuntu-2404-and-apparmor)). Run `./verify.sh` on a
+real machine after deployment.
 
 Without internet access, set `GITLEAKS_MIRROR` to an internal server hosting
 `v<version>/gitleaks_<version>_<platform>.tar.gz` (the pinned SHA-256 still applies), or set
-`GITLEAKS_BIN` to a binary of the pinned version, for example
+`GITLEAKS_BIN` to a binary of the pinned version:
 `sudo GITLEAKS_BIN=/path/to/gitleaks ./install.sh install`.
 
 If `/etc/codex/config.toml` or `requirements.toml` already exists and does not start with
-`# Managed by agent-security.`, the installer stops without changing anything: merge the
-repository's `codex/*.toml` into your files by hand, or remove yours if it is not needed.
+`# Managed by agent-security.`, the installer stops without changing anything. Merge the
+repository's `codex/*.toml` into those files, or remove them if they are not needed.
+
+## Verification
+
+`./verify.sh` runs as the user, from a regular terminal. Agent sandboxes cannot be nested, so it
+refuses to run inside one. `--live` adds the checks that start real agent sessions and use a
+little quota.
+
+| Group | Checks |
+|---|---|
+| Installation | `install.sh status`: every file is present and owned by root |
+| Scanner | The installed scanner blocks a synthetic credential |
+| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable. The credential-directory and Unix-socket probes run when `~/.ssh` and the session bus exist on the machine |
+| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks |
+| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; Claude Code's bypass mode is disabled |
 
 ## Ubuntu 24.04+ and AppArmor
 
 Claude Code's sandbox runs commands under bubblewrap, which needs unprivileged user namespaces.
 From Ubuntu 24.04, AppArmor restricts them (`kernel.apparmor_restrict_unprivileged_userns = 1`).
-What happens next depends on the system:
+The result depends on the system:
 
-| Situation | Effect | What the installer does |
+| Situation | Effect | Installer action |
 |---|---|---|
 | Restriction off (`0`, or no such sysctl) | Everything works, including Claude Code's seccomp socket filter | Base policy only |
-| Restriction on, Ubuntu's `bwrap-userns-restrict` profile present (confirmed on 26.04) | bubblewrap starts, but its children lose capabilities, so Claude Code's seccomp helper cannot create a nested user namespace: `apply-seccomp: write /proc/self/setgroups … caller must provide CAP_SYS_ADMIN` | Installs the socket overlay |
-| Restriction on, no profile for bubblewrap (stock 24.04) | bubblewrap cannot create a sandbox at all | Stops and says so. Add the profile below, then run the installer again |
+| Restriction on, Ubuntu's `bwrap-userns-restrict` profile present (validated on 26.04) | bubblewrap starts, but its children lose capabilities, so Claude Code's seccomp helper cannot create a nested user namespace: `apply-seccomp: write /proc/self/setgroups … caller must provide CAP_SYS_ADMIN` | Installs the socket overlay |
+| Restriction on, no profile for bubblewrap (stock 24.04) | bubblewrap cannot create a sandbox | Stops with a message. Add the profile below, then run the installer again |
 
-The installer decides by trying the real operations as the user who ran `sudo`. You can run them:
+The installer decides by running the real operations as the user who invoked `sudo`. They can be
+run by hand:
 
 ```sh
 # 1. can bubblewrap create a sandbox?
@@ -83,13 +98,14 @@ bwrap --ro-bind / / --dev /dev --proc /proc --unshare-user --unshare-pid --unsha
   -- unshare --user --map-root-user true
 ```
 
-Probe 1 failing means the profile below is needed; probe 2 failing means the overlay is used.
+Probe 1 failing means the profile below is needed. Probe 2 failing means the overlay is used.
 `UNIX_SOCKET_OVERLAY=yes|no` overrides the decision.
 
 **Profile for stock Ubuntu 24.04**, from the
-[Claude Code sandboxing documentation](https://code.claude.com/docs/en/sandboxing) (not tested
-here). Do not add it where `/etc/apparmor.d/bwrap-userns-restrict` exists: both profiles would
-attach to `/usr/bin/bwrap` under the same name.
+[Claude Code sandboxing documentation](https://code.claude.com/docs/en/sandboxing) (vendor
+documentation; not validated in this repository). Do not add it where
+`/etc/apparmor.d/bwrap-userns-restrict` exists: both profiles would attach to `/usr/bin/bwrap`
+under the same name.
 
 ```text
 abi <abi/4.0>,
@@ -102,7 +118,4 @@ profile bwrap /usr/bin/bwrap flags=(unconfined) {
 ```
 
 Save it as `/etc/apparmor.d/bwrap` and run `sudo systemctl reload apparmor`. With it, bubblewrap's
-children keep their capabilities, probe 2 passes, and the overlay is not needed.
-
-A Codex sandbox cannot start inside a Claude Code sandbox (nested user namespaces are exactly what
-is blocked), so run `./verify.sh` from a normal terminal.
+children keep their capabilities, probe 2 passes and the overlay is not needed.
