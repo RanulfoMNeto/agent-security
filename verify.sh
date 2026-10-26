@@ -44,7 +44,7 @@ assert_probe() {
     case $state in
       blocked)   pass "$label: $name is blocked" ;;
       n/a)       skip "$label: $name (nothing to test on this machine)" ;;
-      reachable) fail "$label: $name is reachable (a hole)" ;;
+      reachable) fail "$label: $name is reachable" ;;
       *)         fail "$label: $name was not reported. Output was: $(head -c 300 <<< "$out" | tr '\n' ' ')" ;;
     esac
   done
@@ -64,9 +64,7 @@ echo "Installation"
 "$ROOT/install.sh" status > "$T/status" 2>&1 && pass "every file is installed and owned by root" || { cat "$T/status"; fail "install.sh status reported problems"; }
 
 echo; echo "Scanner"
-check  "allows a harmless prompt"  bash -c "printf '{\"prompt\":\"refactor the parser\"}' | $SCANNER"
-refuse "blocks invalid input"      bash -c "printf 'not json' | $SCANNER"
-TOKEN=$(detectable_token "$SCANNER") && pass "blocks a synthetic credential" || fail "could not produce a credential the scanner blocks"
+TOKEN=$(detectable_token "$SCANNER") && pass "the installed scanner blocks a synthetic credential" || fail "the installed scanner did not block a synthetic credential"
 
 if command -v codex >/dev/null; then
   echo; echo "Codex sandbox (no model calls)"

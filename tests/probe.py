@@ -2,8 +2,8 @@
 """Try the things an agent's shell must not be able to do. Used by verify.sh.
 
 Run it inside an agent's sandbox, in a directory that contains `.env` and `a/b/c/.env`. It
-prints one `name=state` line per probe, where state is `blocked` (what the policy promises),
-`reachable` (a hole) or `n/a` (nothing to test on this machine).
+prints one `name=state` line per probe, where state is `blocked` (the policy is enforced),
+`reachable` (the policy is not enforced) or `n/a` (nothing to test on this machine).
 
     probe.py [--credential-dir PATH] [--socket PATH]
 """

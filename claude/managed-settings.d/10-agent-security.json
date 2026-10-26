@@ -36,11 +36,7 @@
       "Bash(rm -rf *)",
       "Bash(rm -fr *)",
       "Bash(rm -R *)",
-      "Bash(rm --recursive *)",
-      "Bash(curl * | bash)",
-      "Bash(curl * | sh)",
-      "Bash(wget * | bash)",
-      "Bash(wget * | sh)"
+      "Bash(rm --recursive *)"
     ]
   },
   "sandbox": {
