@@ -110,7 +110,10 @@ decide_overlay() {
 validate() { # a broken policy file would stop the agents from starting
   case $1 in
     *.json) /usr/bin/jq -e . "$1" >/dev/null 2>&1 || die "invalid JSON: $1" ;;
-    *.toml) command -v python3 >/dev/null && { python3 -I -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$1" 2>/dev/null || die "invalid TOML: $1"; } ;;
+    *.toml) # needs Python 3.11+ (tomllib); without it the check is skipped
+            if python3 -I -c 'import tomllib' 2>/dev/null; then
+              python3 -I -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$1" 2>/dev/null || die "invalid TOML: $1"
+            fi ;;
   esac
   return 0
 }

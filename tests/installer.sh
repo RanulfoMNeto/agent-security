@@ -41,6 +41,11 @@ check  "installs again once it is removed"            inst install
 check  "uninstall"                                    inst uninstall
 refuse "uninstall leaves no file behind"              bash -c "find '$D' -type f | grep -q ."
 
+# Python before 3.11 has no tomllib: the TOML check is skipped instead of failing.
+mkdir -p "$T/old-python"; printf '#!/bin/sh\nexit 1\n' > "$T/old-python/python3"; chmod +x "$T/old-python/python3"
+L=$T/legacy-root; mkdir -p "$L"
+check  "installs when python3 cannot load tomllib"    env PATH="$T/old-python:$PATH" DESTDIR="$L" "$ROOT/install.sh" install
+
 # A download that does not match the pinned hash is rejected, and nothing is installed.
 D=$T/mirror-root; mkdir -p "$D"
 # shellcheck source=config/gitleaks.release
