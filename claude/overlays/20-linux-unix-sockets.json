@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "sandbox": {
+    "network": {
+      "allowAllUnixSockets": true
+    },
+    "filesystem": {
+      "denyRead": [
+        "/run/user",
+        "/run/dbus",
+        "/var/run/dbus",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/run/containerd",
+        "/run/snapd.socket",
+        "/run/snapd-snap.socket",
+        "/run/libvirt",
+        "/var/run/libvirt",
+        "/tmp/.X11-unix",
+        "/tmp/.ICE-unix"
+      ]
+    }
+  }
+}

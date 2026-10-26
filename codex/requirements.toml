@@ -1,0 +1,76 @@
+# Managed by agent-security. install.sh refuses to overwrite a file without this line.
+#
+# Installed to /etc/codex/requirements.toml. Requirements are the part of Codex's
+# configuration that users cannot override: a conflicting value in ~/.codex/config.toml or on
+# the command line is replaced, or Codex refuses to load the file. They are Codex's
+# equivalent of Claude Code's managed settings.
+#
+# The credential list below mirrors the `Read(...)` rules in
+# claude/managed-settings.d/10-agent-security.json (except the .env rules, which are in
+# config.toml); tests/consistency.py keeps them equal.
+
+# Only the profile defined in config.toml and the read-only profile can be used.
+# `:danger-full-access` is left out, which also keeps `--dangerously-bypass-approvals-and-sandbox`
+# from leaving the sandbox.
+default_permissions = "agent-security"
+
+[allowed_permission_profiles]
+"agent-security" = true
+":read-only" = true
+
+# Locations no profile, setting or flag can open for reading. `~` is the user's home.
+[permissions.filesystem]
+deny_read = [
+  "~/.ssh",
+  "~/.aws",
+  "~/.azure",
+  "~/.config/gcloud",
+  "~/.kube",
+  "~/.gnupg",
+  "~/.password-store",
+  "~/.config/op",
+  "~/.config/gh",
+  "~/.local/share/keyrings",
+  "~/.mozilla",
+  "~/.config/google-chrome",
+  "~/.config/chromium",
+  "~/Library/Keychains",
+  "~/Library/Application Support/Google/Chrome",
+  "~/Library/Application Support/Firefox",
+  "~/.docker/config.json",
+  "~/.netrc",
+  "~/.git-credentials",
+  "~/.npmrc",
+  "~/.pypirc",
+  "~/.vault-token",
+  "~/.terraform.d/credentials.tfrc.json",
+  "~/.bash_history",
+  "~/.zsh_history",
+  "~/.claude/.credentials.json",
+  "~/.codex/auth.json",
+]
+
+# Managed hooks run without the per-user /hooks trust step and cannot be disabled by users,
+# who can still add their own hooks next to them.
+[features]
+hooks = true
+
+[hooks]
+managed_dir = "/opt/agent-security/bin"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/opt/agent-security/bin/agent-secret-scan"
+timeout = 10
+statusMessage = "Scanning prompt for credentials"
+
+[[hooks.PreToolUse]]
+matcher = ""
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "/opt/agent-security/bin/agent-secret-scan"
+timeout = 10
+statusMessage = "Scanning tool call for credentials"
