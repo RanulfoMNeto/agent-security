@@ -34,12 +34,13 @@ printf 'SECRET=verify-canary\n' | tee "$PROJECT/.env" > "$PROJECT/a/b/c/.env"
 PROBE_ARGS=()
 [[ -d $HOME/.ssh ]] && PROBE_ARGS+=(--credential-dir "$HOME/.ssh")
 [[ -S ${XDG_RUNTIME_DIR:-/nonexistent}/bus ]] && PROBE_ARGS+=(--socket "$XDG_RUNTIME_DIR/bus")
+python3 -c 'import socket; socket.create_connection(("example.com", 443), timeout=5).close()' 2>/dev/null && PROBE_ARGS+=(--network example.com:443)
 
 # assert_probe LABEL OUTPUT: every probe must report blocked (or n/a). The line is looked for
 # anywhere in OUTPUT, because a model that relays the output may reformat it.
 assert_probe() {
   local label=$1 out=$2 name state
-  for name in env_file nested_env_file credential_dir write_outside secret_env unix_socket; do
+  for name in env_file nested_env_file credential_dir write_outside secret_env unix_socket network; do
     state=$(grep -oE "(^|[^a-z_])$name=(blocked|reachable|n/a)" <<< "$out" | head -n1 | sed 's/.*=//')
     case $state in
       blocked)   pass "$label: $name is blocked" ;;

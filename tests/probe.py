@@ -5,7 +5,7 @@ Run it inside an agent's sandbox, in a directory that contains `.env` and `a/b/c
 prints one `name=state` line per probe, where state is `blocked` (the policy is enforced),
 `reachable` (the policy is not enforced) or `n/a` (nothing to test on this machine).
 
-    probe.py [--credential-dir PATH] [--socket PATH]
+    probe.py [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
 """
 
 import argparse
@@ -39,9 +39,15 @@ def connect(path):
     return action
 
 
+def reach(address):
+    host, port = address.rsplit(":", 1)
+    return lambda: socket.create_connection((host, int(port)), timeout=5).close()
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--credential-dir")
 parser.add_argument("--socket")
+parser.add_argument("--network")
 args = parser.parse_args()
 
 results = {
@@ -51,6 +57,7 @@ results = {
     "write_outside": attempt(write_outside),
     "secret_env": "reachable" if os.environ.get("GITHUB_TOKEN") or os.environ.get("OPENAI_API_KEY") else "blocked",
     "unix_socket": attempt(connect(args.socket)) if args.socket else "n/a",
+    "network": attempt(reach(args.network)) if args.network else "n/a",
 }
 for name, state in results.items():
     print(f"{name}={state}")

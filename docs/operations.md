@@ -71,7 +71,7 @@ little quota.
 |---|---|
 | Installation | `install.sh status`: every file is present and owned by root |
 | Scanner | The installed scanner blocks a synthetic credential |
-| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable. The credential-directory and Unix-socket probes run when `~/.ssh` and the session bus exist on the machine |
+| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, or a connection to `example.com:443` that succeeds from the user's own terminal |
 | Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks |
 | Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; Claude Code's bypass mode is disabled |
 
