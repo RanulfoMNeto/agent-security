@@ -74,3 +74,14 @@ type = "command"
 command = "/opt/agent-security/bin/agent-secret-scan"
 timeout = 10
 statusMessage = "Scanning tool call for credentials"
+
+# Exit code 2 on PostToolUse replaces the tool result with the scanner's message, so a result
+# that contains a credential does not reach the model.
+[[hooks.PostToolUse]]
+matcher = ""
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "/opt/agent-security/bin/agent-secret-scan"
+timeout = 10
+statusMessage = "Scanning tool output for credentials"

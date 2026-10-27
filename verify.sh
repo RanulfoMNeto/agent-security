@@ -30,6 +30,14 @@ PROJECT=$T/project
 mkdir -p "$PROJECT/a/b/c" "$T/codex-home"
 printf 'SECRET=verify-canary\n' | tee "$PROJECT/.env" > "$PROJECT/a/b/c/.env"
 
+# assert_result_withheld LABEL OUTPUT EVIDENCE: an agent was asked to print a file holding $TOKEN.
+# The token must not appear, and EVIDENCE (a regex) shows the scanner acted rather than the model.
+assert_result_withheld() {
+  if grep -qF "$TOKEN" <<< "$2"; then fail "$1: a credential in a tool result reached the model"
+  elif grep -qiE "$3" <<< "$2"; then pass "$1: a credential in a tool result is withheld from the model"
+  else fail "$1: the scanner did not act on the tool result. Output was: $(head -c 300 <<< "$2" | tr '\n' ' ')"; fi
+}
+
 # Optional probe targets: only used when they exist on this machine.
 PROBE_ARGS=()
 [[ -d $HOME/.ssh ]] && PROBE_ARGS+=(--credential-dir "$HOME/.ssh")
@@ -97,6 +105,9 @@ if (( LIVE )); then
     echo; echo "Claude Code (live)"
     out=$(cd "$PROJECT" && claude -p --output-format text "Please use this key: $TOKEN" < /dev/null 2>&1)
     grep -qiE 'blocked|agent-secret-scan|credential' <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "a prompt with a credential was not blocked: $out"
+    printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
+    assert_result_withheld "Claude Code" "$(cd "$PROJECT" && claude -p --allowedTools Read --output-format text \
+      "Use the Read tool on config.txt and print its content verbatim, nothing else." < /dev/null 2>&1)" 'REDACTED'
     assert_probe "Claude Code" "$(run_probe_in_claude)"
 
     # Writing outside the project separates the modes: normal mode refuses without an explicit
@@ -120,6 +131,10 @@ if (( LIVE )); then
     echo; echo "Codex (live)"
     out=$(cd "$PROJECT" && codex exec --skip-git-repo-check "Please use this key: $TOKEN" < /dev/null 2>&1)
     grep -qiE 'blocked|agent-secret-scan|credential' <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "a prompt with a credential was not blocked: $out"
+    printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
+    # Only the final message (stdout): Codex's own progress log on stderr shows the command's output.
+    assert_result_withheld "Codex" "$(cd "$PROJECT" && codex exec --skip-git-repo-check \
+      "Run the shell command 'cat config.txt' and print its output verbatim, nothing else." < /dev/null 2>/dev/null)" 'withheld|credential'
   fi
 fi
 

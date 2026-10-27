@@ -31,6 +31,20 @@ event "$TOKEN # gitleaks:allow" '{prompt: $v}' | scan;                          
 printf 'not json' | scan;                                                            check "fails closed on invalid JSON" test $? -eq 2
 : | scan;                                                                            check "fails closed on empty input" test $? -eq 2
 printf '["a"]' | scan;                                                               check "fails closed on JSON that is not an object" test $? -eq 2
+event "out $TOKEN" '{hook_event_name: "PostToolUse", tool_response: $v}' | scan;    check "blocks a credential in a tool result (Codex)" test $? -eq 2
+
+# Redact mode (Claude Code's PostToolUse): only the credential changes, the result keeps its shape.
+RESULT='{hook_event_name: "PostToolUse", tool_response: {type: "text", file: {content: $v, numLines: 2}}}'
+out=$(event "a=1
+key=$TOKEN" "$RESULT" | "$SCAN" --redact 2>/dev/null)
+check "redacts a credential in a tool result" grep -qF '[REDACTED]' <<< "$out"
+refuse "leaves no credential in the redacted result" grep -qF "$TOKEN" <<< "$out"
+shape=$(event "x" "$RESULT" | /usr/bin/jq -c '.tool_response | [paths]')
+check "keeps the shape of the tool result" test "$(/usr/bin/jq -c '.hookSpecificOutput.updatedToolOutput | [paths]' <<< "$out")" = "$shape"
+out=$(event "a=1" "$RESULT" | "$SCAN" --redact 2>/dev/null)
+check "prints nothing for a clean tool result" test $? -eq 0 -a -z "$out"
+out=$(printf 'not json' | "$SCAN" --redact 2>/dev/null)
+check "stops the session when a tool result cannot be scanned" test "$(/usr/bin/jq -r '.continue' <<< "$out")" = false
 
 # A repository or the session environment must not be able to switch the scanner off.
 printf '[extend]\nuseDefault = true\n[allowlist]\nregexes = [%s.*%s]\n' "'''" "'''" > "$T/untrusted/.gitleaks.toml"
@@ -39,5 +53,7 @@ check "ignores a repository .gitleaks.toml and GITLEAKS_CONFIG" test $? -eq 2
 
 mv "$T/bin/gitleaks" "$T/bin/gitleaks.moved"
 printf '{"prompt":"refactor the parser"}' | scan;                                     check "fails closed when gitleaks is missing" test $? -eq 2
+out=$(event "a=1" "$RESULT" | "$SCAN" --redact 2>/dev/null)
+check "stops the session when gitleaks is missing (redact mode)" test "$(/usr/bin/jq -r '.continue' <<< "$out")" = false
 
 finish scanner
