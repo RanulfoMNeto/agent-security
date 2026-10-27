@@ -6,6 +6,10 @@
 # locations. The environment-file rules below must live here: Codex does not apply `**/.env`
 # globs from requirements.toml.
 
+# On-request approvals without sandbox escalation prompts; requirements.toml allows only this
+# policy and `never`.
+approval_policy = { granular = { sandbox_approval = false, rules = true, mcp_elicitations = true, request_permissions = true, skill_approval = true } }
+
 [permissions.agent-security]
 description = "Workspace write access; environment files denied, credential locations denied by requirements.toml; network limited to code hosting and package registries."
 # Built-in behaviour: read the machine, write only the workspace and the temporary directory,
