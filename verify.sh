@@ -43,18 +43,25 @@ PROBE_ARGS=()
 [[ -d $HOME/.ssh ]] && PROBE_ARGS+=(--credential-dir "$HOME/.ssh")
 [[ -S ${XDG_RUNTIME_DIR:-/nonexistent}/bus ]] && PROBE_ARGS+=(--socket "$XDG_RUNTIME_DIR/bus")
 python3 -c 'import socket; socket.create_connection(("example.com", 443), timeout=5).close()' 2>/dev/null && PROBE_ARGS+=(--network example.com:443)
+reachable_url() { python3 -c 'import sys, urllib.request; urllib.request.urlopen(urllib.request.Request(sys.argv[1], method="HEAD"), timeout=10)' "$1" 2>/dev/null; }
+reachable_url https://pypi.org/ && PROBE_ARGS+=(--allowed-url https://pypi.org/)
+reachable_url https://example.com/ && PROBE_ARGS+=(--other-url https://example.com/)
+[[ -n $(git config --get-all credential.helper 2>/dev/null) ]] && PROBE_ARGS+=(--git-credential github.com)
 
-# assert_probe LABEL OUTPUT: every probe must report blocked (or n/a). The line is looked for
-# anywhere in OUTPUT, because a model that relays the output may reformat it.
+# assert_probe LABEL OUTPUT: every probe must report blocked (or n/a), except allowed_host, a
+# host on the network allowlist, which must be reachable. The line is looked for anywhere in
+# OUTPUT, because a model that relays the output may reformat it.
 assert_probe() {
-  local label=$1 out=$2 name state
-  for name in env_file nested_env_file credential_dir write_outside secret_env unix_socket network; do
+  local label=$1 out=$2 probe name expected state
+  for probe in env_file nested_env_file credential_dir write_outside secret_env unix_socket network other_host git_credential allowed_host=reachable; do
+    name=${probe%=*} expected=blocked
+    [[ $probe == *=* ]] && expected=${probe#*=}
     state=$(grep -oE "(^|[^a-z_])$name=(blocked|reachable|n/a)" <<< "$out" | head -n1 | sed 's/.*=//')
     case $state in
-      blocked)   pass "$label: $name is blocked" ;;
-      n/a)       skip "$label: $name (nothing to test on this machine)" ;;
-      reachable) fail "$label: $name is reachable" ;;
-      *)         fail "$label: $name was not reported. Output was: $(head -c 300 <<< "$out" | tr '\n' ' ')" ;;
+      "$expected")       pass "$label: $name is $state" ;;
+      n/a)               skip "$label: $name (nothing to test on this machine)" ;;
+      blocked|reachable) fail "$label: $name is $state" ;;
+      *)                 fail "$label: $name was not reported. Output was: $(head -c 300 <<< "$out" | tr '\n' ' ')" ;;
     esac
   done
 }
@@ -96,6 +103,11 @@ if command -v codex >/dev/null; then
   out=$(doctor '[features]
 hooks = false')
   "$JQ" -e '.checks["config.load"].details["enabled feature flags"] | split(", ") | index("hooks")' <<< "$out" >/dev/null && pass "a user cannot turn the managed hooks off" || fail "a user turned the managed hooks off"
+  # The profile turns the network on; only the proxy limits it to the allowed hosts.
+  [[ $(q "$base" '.checks["network.env"].details["managed proxy"]') == configured ]] && pass "commands reach the network only through Codex's proxy" || fail "Codex's network proxy is not configured"
+  out=$(doctor '[features]
+network_proxy = false')
+  [[ $(q "$out" '.checks["network.env"].details["managed proxy"]') == configured ]] && pass "a user cannot turn the network proxy off" || fail "a user turned the network proxy off"
 else
   echo; echo "Codex"; skip "codex is not installed"
 fi

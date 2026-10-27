@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check that the policy files are valid and agree with each other.
 
-The credential locations are written twice, in each tool's own format: Claude Code's `Read(...)`
-deny rules and Codex's `deny_read`. This test keeps the two lists from drifting apart.
+The credential locations and the allowed network hosts are written twice, in each tool's own
+format. This test keeps the two copies from drifting apart.
 """
 
 import json
@@ -42,8 +42,8 @@ for rule in claude.get("permissions", {}).get("deny", []):
         path = match.group(1).removesuffix("/**")
         claude_reads.add(path[2:] if path.startswith("//") else path)
 codex_denies = set(requirements.get("permissions", {}).get("filesystem", {}).get("deny_read", []))
-profile = load(ROOT / "codex/config.toml").get("permissions", {}).get("agent-security", {}).get("filesystem", {})
-codex_env_files = {k for k, v in profile.get(":workspace_roots", {}).items() if v == "deny"}
+profile = load(ROOT / "codex/config.toml").get("permissions", {}).get("agent-security", {})
+codex_env_files = {k for k, v in profile.get("filesystem", {}).get(":workspace_roots", {}).items() if v == "deny"}
 sandbox_env_files = {e["path"] for e in claude.get("sandbox", {}).get("credentials", {}).get("files", [])}
 
 for path in sorted(claude_reads - ENV_FILES - codex_denies):
@@ -56,6 +56,16 @@ if codex_env_files != ENV_FILES:
     errors.append(f"codex/config.toml must deny exactly {sorted(ENV_FILES)} under :workspace_roots, found {sorted(codex_env_files)}")
 if sandbox_env_files != ENV_FILES:
     errors.append(f"Claude's sandbox credentials must list exactly {sorted(ENV_FILES)}, found {sorted(sandbox_env_files)}")
+
+# The network allowlist is also written once per agent, with the same host patterns. In Codex,
+# only the proxy applies it: a profile with the network on and no proxy reaches every host.
+claude_hosts = claude.get("sandbox", {}).get("network", {}).get("allowedDomains", [])
+codex_network = profile.get("network", {})
+codex_hosts = [host for host, rule in codex_network.get("domains", {}).items() if rule == "allow"]
+if not claude_hosts or sorted(claude_hosts) != sorted(codex_hosts):
+    errors.append("the allowed hosts must be the same for Claude Code and Codex")
+if codex_network.get("enabled") and requirements.get("features", {}).get("network_proxy") is not True:
+    errors.append("the Codex profile turns the network on, so requirements.toml must pin features.network_proxy")
 
 # Both agents call the same scanner, and Claude Code must block when the hook cannot run.
 hooks = [h for groups in claude.get("hooks", {}).values() for g in groups for h in g["hooks"]]

@@ -24,6 +24,8 @@
       "Read(~/.docker/config.json)",
       "Read(~/.netrc)",
       "Read(~/.git-credentials)",
+      "Read(~/.config/git/credentials)",
+      "Read(~/.cache/git/credential/**)",
       "Read(~/.npmrc)",
       "Read(~/.pypirc)",
       "Read(~/.vault-token)",
@@ -47,6 +49,34 @@
     "allowNestedUserNamespaces": false,
     "filesystem": {
       "allowManagedReadPathsOnly": true
+    },
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "*.github.com",
+        "*.githubusercontent.com",
+        "gitlab.com",
+        "registry.npmjs.org",
+        "registry.yarnpkg.com",
+        "repo.yarnpkg.com",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "crates.io",
+        "index.crates.io",
+        "static.crates.io",
+        "static.rust-lang.org",
+        "proxy.golang.org",
+        "sum.golang.org",
+        "rubygems.org",
+        "index.rubygems.org",
+        "repo.maven.apache.org",
+        "repo1.maven.org",
+        "plugins.gradle.org",
+        "services.gradle.org",
+        "downloads.gradle.org",
+        "api.nuget.org",
+        "repo.packagist.org"
+      ]
     },
     "credentials": {
       "files": [

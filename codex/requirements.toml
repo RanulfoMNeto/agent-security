@@ -40,6 +40,8 @@ deny_read = [
   "~/.docker/config.json",
   "~/.netrc",
   "~/.git-credentials",
+  "~/.config/git/credentials",
+  "~/.cache/git/credential",
   "~/.npmrc",
   "~/.pypirc",
   "~/.vault-token",
@@ -52,8 +54,13 @@ deny_read = [
 
 # Managed hooks run without the per-user /hooks trust step and cannot be disabled by users,
 # who can still add their own hooks next to them.
+#
+# The agent-security profile turns command network access on, and only the network proxy
+# applies its domain rules: without the proxy, those commands would reach every host. Pinning
+# the feature here keeps users from turning the proxy off.
 [features]
 hooks = true
+network_proxy = true
 
 [hooks]
 managed_dir = "/opt/agent-security/bin"
