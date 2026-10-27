@@ -95,10 +95,19 @@ little quota.
 | Group | Checks |
 |---|---|
 | Installation | `install.sh status`: every file is present and owned by root |
-| Scanner | The installed scanner blocks a synthetic credential |
+| Scanner | The installed scanner accepts a harmless prompt over a socket and detects a synthetic credential; scanner errors do not count as detection |
 | Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection, an HTTPS request to a host outside the allowlist (`example.com`), a stored git credential for `github.com`. An HTTPS request to an allowed host (`pypi.org`) is reported `reachable`. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, a host the user's own terminal cannot reach, or a git credential helper |
 | Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off |
 | Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart` |
+
+## Every Claude Code prompt is blocked with a stdin error
+
+`/dev/stdin: No such device or address` followed by `the hook event is empty or malformed`
+means the scanner failed to read the event, before checking for credentials. Claude Code can
+deliver hook input over a Unix socket; reopening `/dev/stdin` fails for sockets on Linux.
+The scanner must read the inherited stdin descriptor directly. Update and reinstall with the
+commands under [Update](#update), then restart Claude Code and run `./verify.sh --live`.
+The socket check in `./verify.sh` also catches this without starting an agent.
 
 ## Ubuntu 24.04+ and AppArmor
 

@@ -89,7 +89,9 @@ echo "Installation"
 "$ROOT/install.sh" status > "$T/status" 2>&1 && pass "every file is installed and owned by root" || { cat "$T/status"; fail "install.sh status reported problems"; }
 
 echo; echo "Scanner"
-TOKEN=$(detectable_token "$SCANNER") && pass "the installed scanner blocks a synthetic credential" || fail "the installed scanner did not block a synthetic credential"
+printf '{"prompt":"self-test"}' | python3 "$ROOT/tests/socket-stdin.py" "$SCANNER" 2>/dev/null &&
+  pass "the installed scanner accepts a harmless prompt over a socket" || { fail "the installed scanner could not read a harmless prompt over a socket"; finish verify; }
+TOKEN=$(detectable_token "$SCANNER") && pass "the installed scanner blocks a synthetic credential" || { fail "the installed scanner did not detect a synthetic credential"; finish verify; }
 
 if command -v codex >/dev/null; then
   echo; echo "Codex sandbox (no model calls)"
@@ -125,7 +127,7 @@ if (( LIVE )); then
   if command -v claude >/dev/null; then
     echo; echo "Claude Code (live)"
     out=$(cd "$PROJECT" && claude -p --output-format text "Please use this key: $TOKEN" < /dev/null 2>&1)
-    grep -qiE 'blocked|agent-secret-scan|credential' <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "a prompt with a credential was not blocked: $out"
+    credential_detected <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "no credential-detection diagnostic for the prompt: $out"
     printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
     assert_result_withheld "Claude Code" "$(cd "$PROJECT" && claude -p --allowedTools Read --output-format text \
       "Use the Read tool on config.txt and print its content verbatim, nothing else." < /dev/null 2>&1)" 'REDACTED'
@@ -154,7 +156,7 @@ if (( LIVE )); then
   if command -v codex >/dev/null; then
     echo; echo "Codex (live)"
     out=$(cd "$PROJECT" && codex exec --skip-git-repo-check "Please use this key: $TOKEN" < /dev/null 2>&1)
-    grep -qiE 'blocked|agent-secret-scan|credential' <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "a prompt with a credential was not blocked: $out"
+    credential_detected <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "no credential-detection diagnostic for the prompt: $out"
     printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
     # Only the final message (stdout): Codex's own progress log on stderr shows the command's output.
     assert_result_withheld "Codex" "$(cd "$PROJECT" && codex exec --skip-git-repo-check \
