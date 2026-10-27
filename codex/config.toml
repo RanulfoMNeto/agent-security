@@ -7,8 +7,9 @@
 # globs from requirements.toml.
 
 [permissions.agent-security]
-description = "Workspace write access; environment files denied, credential locations denied by requirements.toml."
+description = "Workspace write access; environment files denied, credential locations denied by requirements.toml; network limited to code hosting and package registries."
 # Built-in behaviour: read the machine, write only the workspace, .git read-only, network off.
+# The network section below turns the network on, through the proxy only.
 extends = ":workspace"
 
 [permissions.agent-security.filesystem]
@@ -21,6 +22,40 @@ glob_scan_max_depth = 6
 [permissions.agent-security.filesystem.":workspace_roots"]
 "**/.env" = "deny"
 "**/.env.*" = "deny"
+
+# Commands reach the network through Codex's proxy, which allows only these hosts: code hosting
+# and package registries, where reading needs no credential and writing needs one the agent
+# cannot reach. requirements.toml keeps the proxy on. The list mirrors `sandbox.network.
+# allowedDomains` in claude/managed-settings.d/10-agent-security.json; tests/consistency.py
+# keeps them equal. `*.` matches subdomains only, so apex hosts are listed on their own.
+[permissions.agent-security.network]
+enabled = true
+
+[permissions.agent-security.network.domains]
+"github.com" = "allow"
+"*.github.com" = "allow"
+"*.githubusercontent.com" = "allow"
+"gitlab.com" = "allow"
+"registry.npmjs.org" = "allow"
+"registry.yarnpkg.com" = "allow"
+"repo.yarnpkg.com" = "allow"
+"pypi.org" = "allow"
+"files.pythonhosted.org" = "allow"
+"crates.io" = "allow"
+"index.crates.io" = "allow"
+"static.crates.io" = "allow"
+"static.rust-lang.org" = "allow"
+"proxy.golang.org" = "allow"
+"sum.golang.org" = "allow"
+"rubygems.org" = "allow"
+"index.rubygems.org" = "allow"
+"repo.maven.apache.org" = "allow"
+"repo1.maven.org" = "allow"
+"plugins.gradle.org" = "allow"
+"services.gradle.org" = "allow"
+"downloads.gradle.org" = "allow"
+"api.nuget.org" = "allow"
+"repo.packagist.org" = "allow"
 
 [shell_environment_policy]
 # Remove variables whose names contain KEY, SECRET or TOKEN from command environments.

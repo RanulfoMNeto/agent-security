@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""Try the things an agent's shell must not be able to do. Used by verify.sh.
+"""Try the things an agent's shell must or must not be able to do. Used by verify.sh.
 
 Run it inside an agent's sandbox, in a directory that contains `.env` and `a/b/c/.env`. It
-prints one `name=state` line per probe, where state is `blocked` (the policy is enforced),
-`reachable` (the policy is not enforced) or `n/a` (nothing to test on this machine).
+prints one `name=state` line per probe, where state is `blocked`, `reachable` or `n/a` (nothing
+to test on this machine). Every probe must report `blocked`, except `allowed_host`: a host on
+the policy's network allowlist must be `reachable`.
 
     probe.py [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
+             [--allowed-url URL] [--other-url URL] [--git-credential HOST]
 """
 
 import argparse
 import os
 import socket
+import subprocess
+import urllib.error
+import urllib.request
 
 
 def attempt(action):
@@ -44,10 +49,35 @@ def reach(address):
     return lambda: socket.create_connection((host, int(port)), timeout=5).close()
 
 
+def fetch(url):
+    """HTTPS through the proxy the sandbox sets in HTTPS_PROXY, as package managers do. Any
+    HTTP response, an error status included, means the host was reached."""
+    def action():
+        try:
+            urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=10).close()
+        except urllib.error.HTTPError:
+            pass
+    return action
+
+
+def git_credential(host):
+    """Ask git for the stored HTTPS credential of HOST, as `git push` would, without prompting."""
+    def action():
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GIT_ASKPASS="/bin/false", SSH_ASKPASS="/bin/false")
+        result = subprocess.run(["git", "credential", "fill"], input=f"protocol=https\nhost={host}\n\n",
+                                capture_output=True, text=True, timeout=10, env=env)
+        if "password=" not in result.stdout:
+            raise PermissionError
+    return action
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--credential-dir")
 parser.add_argument("--socket")
 parser.add_argument("--network")
+parser.add_argument("--allowed-url")
+parser.add_argument("--other-url")
+parser.add_argument("--git-credential")
 args = parser.parse_args()
 
 results = {
@@ -58,6 +88,9 @@ results = {
     "secret_env": "reachable" if os.environ.get("GITHUB_TOKEN") or os.environ.get("OPENAI_API_KEY") else "blocked",
     "unix_socket": attempt(connect(args.socket)) if args.socket else "n/a",
     "network": attempt(reach(args.network)) if args.network else "n/a",
+    "other_host": attempt(fetch(args.other_url)) if args.other_url else "n/a",
+    "git_credential": attempt(git_credential(args.git_credential)) if args.git_credential else "n/a",
+    "allowed_host": attempt(fetch(args.allowed_url)) if args.allowed_url else "n/a",
 }
 for name, state in results.items():
     print(f"{name}={state}")
