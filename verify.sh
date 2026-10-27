@@ -129,7 +129,7 @@ if (( LIVE )); then
   if command -v claude >/dev/null; then
     echo; echo "Claude Code (live)"
     out=$(cd "$PROJECT" && claude -p --output-format text "Please use this key: $TOKEN" < /dev/null 2>&1)
-    credential_detected <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "no credential-detection diagnostic for the prompt: $out"
+    credential_detected <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "no credential-detection diagnostic for the prompt: ${out//$TOKEN/<token>}"
     printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
     assert_result_withheld "Claude Code" "$(cd "$PROJECT" && claude -p --allowedTools Read --output-format text \
       "Use the Read tool on config.txt and print its content verbatim, nothing else." < /dev/null 2>&1)" 'REDACTED'
@@ -157,8 +157,11 @@ if (( LIVE )); then
 
   if command -v codex >/dev/null; then
     echo; echo "Codex (live)"
+    # codex exec reports that the hook blocked the prompt, not the scanner's message. The Scanner
+    # group shows that the installed scanner detects this token, and the tool-result check below
+    # runs a prompt the hook must let through.
     out=$(cd "$PROJECT" && codex exec --skip-git-repo-check "Please use this key: $TOKEN" < /dev/null 2>&1)
-    credential_detected <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "no credential-detection diagnostic for the prompt: $out"
+    grep -qE 'UserPromptSubmit Blocked' <<< "$out" && pass "a prompt with a credential is blocked before it reaches the model" || fail "the prompt was not blocked: ${out//$TOKEN/<token>}"
     printf 'api_key = %s\n' "$TOKEN" > "$PROJECT/config.txt"
     # Only the final message (stdout): Codex's own progress log on stderr shows the command's output.
     assert_result_withheld "Codex" "$(cd "$PROJECT" && codex exec --skip-git-repo-check \
