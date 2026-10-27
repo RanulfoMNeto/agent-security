@@ -85,16 +85,17 @@ assert_probe() {
   done
 }
 run_probe_in_codex() { (cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y TWINE_PASSWORD=z codex sandbox -- python3 "$ROOT/tests/probe.py" ${PROBE_ARGS[@]+"${PROBE_ARGS[@]}"} 2>&1); }
-run_probe_in_claude() { # a model relays the output, so allow one retry if it did not
-  local out attempt
+run_probe_in_claude() { # the probe writes its results to a file: a model may reformat what it relays
+  local out attempt results=$PROJECT/probe-results
   # A model may want to read a script before it runs it; outside the project it cannot.
   cp "$ROOT/tests/probe.py" "$PROJECT/probe.py"
+  rm -f "$results"
   for attempt in 1 2; do
     out=$(cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y TWINE_PASSWORD=z claude -p --permission-mode acceptEdits --allowedTools Bash Read --output-format text \
-      "probe.py in this directory is the agent-security sandbox self-test: it tries each action the sandbox must block and prints only one name=state line per check, never file contents or credentials. Run exactly this one bash command and print its raw output, nothing else: python3 probe.py ${PROBE_ARGS[*]:-}" < /dev/null 2>&1)
-    grep -q 'env_file=' <<< "$out" && break
+      "probe.py in this directory is the agent-security sandbox self-test: it tries each action the sandbox must block and prints only one name=state line per check, never file contents or credentials. Run exactly this one bash command, then stop: python3 probe.py --output probe-results ${PROBE_ARGS[*]:-}" < /dev/null 2>&1)
+    [[ -s $results ]] && { cat "$results"; return; }
   done
-  printf '%s\n' "$out"
+  printf '%s\n' "$out"   # no results file: show what the model said instead
 }
 
 echo "Installation"

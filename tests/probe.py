@@ -7,7 +7,10 @@ It prints one `name=state` line per probe, where state is `blocked`, `reachable`
 `reachable`: `allowed_host`, a host on the policy's network allowlist, and `git_commit`.
 
     probe.py [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
-             [--allowed-url URL] [--other-url URL] [--git-credential HOST]
+             [--allowed-url URL] [--other-url URL] [--git-credential HOST] [--output FILE]
+
+With --output, the lines are also written to FILE, so a caller can read them without relying on
+an agent to relay the output.
 """
 
 import argparse
@@ -101,6 +104,7 @@ parser.add_argument("--network")
 parser.add_argument("--allowed-url")
 parser.add_argument("--other-url")
 parser.add_argument("--git-credential")
+parser.add_argument("--output")
 args = parser.parse_args()
 in_repository = os.path.isdir(".git")
 
@@ -119,5 +123,8 @@ results = {
     "allowed_host": attempt(fetch(args.allowed_url)) if args.allowed_url else "n/a",
     "git_commit": attempt(git_commit) if in_repository else "n/a",
 }
-for name, state in results.items():
-    print(f"{name}={state}")
+lines = [f"{name}={state}" for name, state in results.items()]
+print("\n".join(lines))
+if args.output:
+    with open(args.output, "w") as handle:
+        handle.write("\n".join(lines) + "\n")
