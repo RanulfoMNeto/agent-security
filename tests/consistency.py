@@ -69,6 +69,17 @@ for hook in hooks:
     if hook.get("onFailure") != "block":
         errors.append("every Claude Code hook must set onFailure to block")
 
+# Both agents scan prompts, tool calls and tool results. Claude Code's tool results go through
+# the scanner's redact mode; every other hook runs in block mode, without arguments.
+EVENTS = {"UserPromptSubmit", "PreToolUse", "PostToolUse"}
+codex_events = {e for e, groups in requirements.get("hooks", {}).items() if isinstance(groups, list)}
+if set(claude.get("hooks", {})) != EVENTS or codex_events != EVENTS:
+    errors.append(f"both agents must hook exactly {sorted(EVENTS)}")
+for event, groups in claude.get("hooks", {}).items():
+    expected = ["--redact"] if event == "PostToolUse" else []
+    if any(h.get("args") != expected for g in groups for h in g["hooks"]):
+        errors.append(f"Claude Code's {event} hook must have args {expected}")
+
 # install.sh refuses to overwrite a Codex file that does not start with this line.
 for path in (ROOT / "codex").glob("*.toml"):
     if not path.read_text().startswith("# Managed by agent-security."):
