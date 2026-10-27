@@ -17,8 +17,8 @@ credentials with [gitleaks](https://github.com/gitleaks/gitleaks).
 | Filesystem | Commands write only in the project directory and the temporary directory. In the project's `.git`, `config` and `hooks` are read-only. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
 | Network | Commands reach code hosting and package registries (24 hosts) through the agent's proxy. Other hosts: Claude Code asks, Codex refuses |
 | Local services | Unix sockets to the user session, D-Bus, Docker, containerd, snapd, libvirt and X11 are closed |
-| Commands | Claude Code denies recursive `rm` |
-| Policy integrity | Policy files are owned by root. The sandbox, the hooks and the Codex profile cannot be disabled by users, and Claude Code's bypass mode is disabled |
+| Commands | Recursive `rm` is denied |
+| Policy integrity | Policy files are owned by root. The sandbox, the hooks and the Codex profile cannot be disabled by users, Claude Code's bypass mode is disabled, and no command can run outside the sandbox |
 
 The exact rules, paths and variable names are in [controls](docs/controls.md).
 
@@ -71,7 +71,7 @@ All files are copies of repository files, owned by root.
 |---|---|
 | Add hooks, permission rules, MCP servers and project settings | Removing a deny rule, a credential location or a managed hook |
 | Approve a network host when Claude Code asks, or add hosts in their own settings ([operations](docs/operations.md#allow-another-host)) | Disabling the sandbox, allowing unsandboxed commands, re-opening a protected read path, turning off Codex's network proxy |
-| Select any permission mode except bypass | Entering `bypassPermissions`, or leaving the Codex managed profile |
+| Select any permission mode except bypass | Entering `bypassPermissions`, leaving the Codex managed profile, or letting Codex ask to run a command outside the sandbox |
 | Use a personal Codex `config.toml` | Loosening the Codex requirements |
 
 Changing or removing the policy requires root.

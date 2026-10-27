@@ -135,7 +135,7 @@ Commands cannot write these paths in either agent: the sandbox confines writes t
 | Unix sockets | See section 5 | Blocked |
 | Persistence and version-control paths | Native protected paths | Not writable outside the workspace; `.agents`, `.codex` and `.aws` in the workspace read-only |
 | Sandbox required | `enabled: true`; `failIfUnavailable: true` (Claude Code exits rather than run unsandboxed) | Managed profile `agent-security`, which extends the built-in `:workspace` |
-| Unsandboxed execution | `allowUnsandboxedCommands: false`, `enableWeakerNestedSandbox: false`, `allowNestedUserNamespaces: false` | Allowed profiles: `agent-security`, `:read-only` |
+| Unsandboxed execution | `allowUnsandboxedCommands: false`, `enableWeakerNestedSandbox: false`, `allowNestedUserNamespaces: false` | Allowed profiles: `agent-security`, `:read-only`. No sandbox escalation prompts (section 7) |
 
 **`.git`.** Both agents can commit. `config` and `hooks` stay read-only: either can make git run
 a program the next time the user runs git outside the sandbox. Claude Code protects them
@@ -196,7 +196,8 @@ and writing needs one the agent cannot reach (sections 2 and 3):
 
 - **Claude Code:** `permissions.deny` contains `Bash(rm -r *)`, `Bash(rm -rf *)`, `Bash(rm -fr *)`,
   `Bash(rm -R *)` and `Bash(rm --recursive *)`. The rules match the command text as submitted.
-- **Codex:** no command rules; writes are confined to the workspace.
+- **Codex:** `requirements.toml` `[rules] prefix_rules`: `rm` followed by `-r`, `-rf`, `-fr`, `-R`
+  or `--recursive` is `forbidden`. The rule matches the command's first two arguments.
 
 ## 7. Permission mode and profile
 
@@ -205,6 +206,11 @@ and writing needs one the agent cannot reach (sections 2 and 3):
 - **Codex:** `default_permissions = "agent-security"`. `allowed_permission_profiles` lists
   `agent-security` and `:read-only`; `:danger-full-access` is excluded, which also keeps
   `--dangerously-bypass-approvals-and-sandbox` from leaving the sandbox.
+- **Codex approvals:** `allowed_approval_policies` allows `never` and a granular policy, set as
+  the default in `config.toml`: on-request with `sandbox_approval = false`. Codex then rejects,
+  without asking, every request to run a command outside the sandbox, the request it makes when
+  the proxy refuses a host. Other approval prompts (rules, MCP elicitations, permission requests,
+  skill scripts) remain. Claude Code's equivalent is `allowUnsandboxedCommands: false`.
 
 ## 8. Installation integrity
 

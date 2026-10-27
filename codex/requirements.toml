@@ -14,6 +14,15 @@
 # from leaving the sandbox.
 default_permissions = "agent-security"
 
+# No command leaves the sandbox, as with Claude Code's `allowUnsandboxedCommands: false`. The
+# granular policy is on-request without sandbox escalation prompts: those ask to run a command
+# outside the sandbox, which would also skip the network proxy. `never`, which codex exec uses,
+# asks for nothing. config.toml sets the granular policy as the default.
+allowed_approval_policies = [
+  { granular = { sandbox_approval = false, rules = true, mcp_elicitations = true, request_permissions = true, skill_approval = true } },
+  "never",
+]
+
 [allowed_permission_profiles]
 "agent-security" = true
 ":read-only" = true
@@ -50,6 +59,13 @@ deny_read = [
   "~/.zsh_history",
   "~/.claude/.credentials.json",
   "~/.codex/auth.json",
+]
+
+# Recursive deletion is refused, as Claude Code's `Bash(rm -r *)` deny rules do.
+# tests/consistency.py keeps the two lists of flags equal.
+[rules]
+prefix_rules = [
+  { pattern = [{ token = "rm" }, { any_of = ["-r", "-rf", "-fr", "-R", "--recursive"] }], decision = "forbidden", justification = "Recursive deletion is denied by the agent-security policy." },
 ]
 
 # Managed hooks run without the per-user /hooks trust step and cannot be disabled by users,

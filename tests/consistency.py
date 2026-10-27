@@ -85,6 +85,26 @@ if not claude_hosts or sorted(claude_hosts) != sorted(codex_hosts):
 if codex_network.get("enabled") and requirements.get("features", {}).get("network_proxy") is not True:
     errors.append("the Codex profile turns the network on, so requirements.toml must pin features.network_proxy")
 
+# No Codex command may leave the sandbox (Claude Code: allowUnsandboxedCommands is false), so
+# every allowed approval policy asks nothing or rejects sandbox escalation prompts.
+if claude.get("sandbox", {}).get("allowUnsandboxedCommands") is not False:
+    errors.append("Claude Code must set sandbox.allowUnsandboxedCommands to false")
+allowed_policies = requirements.get("allowed_approval_policies", [])
+for policy in allowed_policies:
+    if policy != "never" and not (isinstance(policy, dict) and policy.get("granular", {}).get("sandbox_approval") is False):
+        errors.append(f"requirements.toml allows an approval policy with sandbox escalation: {policy}")
+if not allowed_policies or codex_config.get("approval_policy") not in allowed_policies:
+    errors.append("codex/config.toml must set an approval_policy that requirements.toml allows")
+
+# Recursive deletion is denied in both agents, with the same flags.
+claude_rm = {m.group(1) for rule in claude.get("permissions", {}).get("deny", [])
+             if (m := re.fullmatch(r"Bash\(rm (\S+) \*\)", rule))}
+codex_rm = {flag for rule in requirements.get("rules", {}).get("prefix_rules", [])
+            if rule.get("decision") == "forbidden" and rule["pattern"][:1] == [{"token": "rm"}]
+            for flag in rule["pattern"][1].get("any_of", [])}
+if not claude_rm or claude_rm != codex_rm:
+    errors.append(f"recursive rm flags differ: Claude Code {sorted(claude_rm)}, Codex {sorted(codex_rm)}")
+
 # Both agents call the same scanner, and Claude Code must block when the hook cannot run.
 hooks = [h for groups in claude.get("hooks", {}).values() for g in groups for h in g["hooks"]]
 codex_hooks = [h for groups in requirements.get("hooks", {}).values() if isinstance(groups, list) for g in groups for h in g["hooks"]]

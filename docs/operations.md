@@ -36,8 +36,8 @@ cannot reach. Users can add hosts for their own sessions:
 
 - **Claude Code:** approve the host when Claude Code asks ("Yes, and don't ask again" keeps it),
   or add it to `sandbox.network.allowedDomains` in `~/.claude/settings.json`.
-- **Codex:** add `"<host>" = "allow"` under `[permissions.agent-security.network.domains]` in
-  `~/.codex/config.toml`.
+- **Codex:** Codex refuses the host without asking. Add `"<host>" = "allow"` under
+  `[permissions.agent-security.network.domains]` in `~/.codex/config.toml` and restart Codex.
 
 `*.example.com` matches subdomains only. Tools that ignore `HTTPS_PROXY` (plain `ssh`, most
 database drivers) cannot reach any host. For an organization, add the host to both lists in the
@@ -97,8 +97,8 @@ little quota.
 | Installation | `install.sh status`: every file is present and owned by root |
 | Scanner | The installed scanner accepts a harmless prompt over a socket and detects a synthetic credential; scanner errors do not count as detection |
 | Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection, an HTTPS request to a host outside the allowlist (`example.com`), a stored git credential for `github.com`, a file created in `.git/hooks`, `.git/config` opened for writing. An HTTPS request to an allowed host (`pypi.org`) and a commit in the test project are reported `reachable`. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, a host the user's own terminal cannot reach, or a git credential helper |
-| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off |
-| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart` |
+| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off; the approval policy rejects sandbox escalation and a user cannot turn it back on |
+| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart` or run `rm -rf` |
 
 ## Every Claude Code prompt is blocked with a stdin error
 
