@@ -17,14 +17,18 @@ finish() {
   printf '\n%s: ok\n' "$1"
 }
 
-# detectable_token SCANNER: a synthetic GitHub-style token that SCANNER blocks. A random token
+# Only the detection diagnostic counts: a scanner failure also blocks, for a different reason.
+credential_detected() { grep -qF 'agent-secret-scan: a literal credential was detected.'; }
+
+# detectable_token SCANNER: a synthetic GitHub-style token that SCANNER detects. A random token
 # can occasionally fall under gitleaks' entropy threshold, so try a few. Generated on the fly
 # so that no credential-shaped string is ever committed.
 detectable_token() {
-  local candidate
+  local candidate output status
   for _ in 1 2 3 4 5 6 7 8; do
     candidate=ghp_$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 36)
-    if ! printf '{"prompt":"%s"}' "$candidate" | "$1" >/dev/null 2>&1; then printf '%s' "$candidate"; return 0; fi
+    output=$(printf '{"prompt":"%s"}' "$candidate" | "$1" 2>&1); status=$?
+    if [[ $status -eq 2 ]] && credential_detected <<< "$output"; then printf '%s' "$candidate"; return 0; fi
   done
   return 1
 }
