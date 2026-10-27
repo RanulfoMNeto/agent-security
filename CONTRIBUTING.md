@@ -10,9 +10,9 @@
 
 ## Policy files
 
-- The credential list exists once per agent: the `Read(...)` rules in
-  `claude/managed-settings.d/10-agent-security.json` and `deny_read` in `codex/requirements.toml`.
-  Change both. `tests/consistency.py` fails when they differ.
+- The credential locations, the secret variables and the allowed hosts exist once per agent
+  ([operations](docs/operations.md#change-or-add-a-rule) lists where). Change both.
+  `tests/consistency.py` fails when they differ.
 - Codex files must start with `# Managed by agent-security.`.
 - Updating gitleaks is described in [docs/operations.md](docs/operations.md#update).
 
