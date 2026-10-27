@@ -85,7 +85,7 @@ results = {
     "nested_env_file": attempt(read("a/b/c/.env")),
     "credential_dir": attempt(lambda: os.listdir(args.credential_dir) or (_ for _ in ()).throw(PermissionError())) if args.credential_dir else "n/a",
     "write_outside": attempt(write_outside),
-    "secret_env": "reachable" if os.environ.get("GITHUB_TOKEN") or os.environ.get("OPENAI_API_KEY") else "blocked",
+    "secret_env": "reachable" if any(os.environ.get(name) for name in ("GITHUB_TOKEN", "OPENAI_API_KEY", "TWINE_PASSWORD")) else "blocked",
     "unix_socket": attempt(connect(args.socket)) if args.socket else "n/a",
     "network": attempt(reach(args.network)) if args.network else "n/a",
     "other_host": attempt(fetch(args.other_url)) if args.other_url else "n/a",
