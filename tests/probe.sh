@@ -38,6 +38,15 @@ out=$(probe);                               check "reports n/a when no host is g
 out=$(probe --allowed-url "http://127.0.0.1:$WEB/"); check "reports an HTTP answer as reachable"     grep -qx 'allowed_host=reachable' <<< "$out"
 out=$(probe --other-url "http://127.0.0.1:$CLOSED/"); check "reports a failed request as blocked"    grep -qx 'other_host=blocked' <<< "$out"
 
+# In a git repository, outside a sandbox, an agent could commit and change config and hooks.
+git -C "$T" init --quiet
+out=$(probe)
+check "reports a commit as reachable"            grep -qx 'git_commit=reachable' <<< "$out"
+check "reports a writable .git/hooks as reachable" grep -qx 'git_hooks=reachable' <<< "$out"
+check "reports a writable .git/config as reachable" grep -qx 'git_config=reachable' <<< "$out"
+out=$(cd "$T/.git" && HOME=$T python3 "$ROOT/tests/probe.py")
+check "reports n/a for the git probes outside a repository" grep -qx 'git_commit=n/a' <<< "$out"
+
 out=$(probe --git-credential example.com);  check "reports no stored git credential as blocked"      grep -qx 'git_credential=blocked' <<< "$out"
 printf '[credential]\n\thelper = "!f() { echo username=u; echo password=p; }; f"\n' > "$T/.gitconfig"
 out=$(probe --git-credential example.com);  check "reports a stored git credential as reachable"     grep -qx 'git_credential=reachable' <<< "$out"

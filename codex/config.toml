@@ -8,8 +8,9 @@
 
 [permissions.agent-security]
 description = "Workspace write access; environment files denied, credential locations denied by requirements.toml; network limited to code hosting and package registries."
-# Built-in behaviour: read the machine, write only the workspace, .git read-only, network off.
-# The network section below turns the network on, through the proxy only.
+# Built-in behaviour: read the machine, write only the workspace and the temporary directory,
+# .git read-only, network off. The sections below open .git except its config and hooks, and turn
+# the network on, through the proxy only.
 extends = ":workspace"
 
 [permissions.agent-security.filesystem]
@@ -19,9 +20,16 @@ extends = ":workspace"
 glob_scan_max_depth = 6
 
 # Environment files inside every workspace root, including .env.example and similar.
+#
+# `:workspace` keeps the whole `.git` read-only, so the agent could not commit. Open it as
+# Claude Code's sandbox does, except `config` and `hooks`: either can make git run a program the
+# next time the user runs git outside the sandbox.
 [permissions.agent-security.filesystem.":workspace_roots"]
 "**/.env" = "deny"
 "**/.env.*" = "deny"
+".git" = "write"
+".git/config" = "read"
+".git/hooks" = "read"
 
 # Commands reach the network through Codex's proxy, which allows only these hosts: code hosting
 # and package registries, where reading needs no credential and writing needs one the agent

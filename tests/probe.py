@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Try the things an agent's shell must or must not be able to do. Used by verify.sh.
 
-Run it inside an agent's sandbox, in a directory that contains `.env` and `a/b/c/.env`. It
-prints one `name=state` line per probe, where state is `blocked`, `reachable` or `n/a` (nothing
-to test on this machine). Every probe must report `blocked`, except `allowed_host`: a host on
-the policy's network allowlist must be `reachable`.
+Run it inside an agent's sandbox, in a git repository that contains `.env` and `a/b/c/.env`.
+It prints one `name=state` line per probe, where state is `blocked`, `reachable` or `n/a`
+(nothing to test on this machine). Every probe must report `blocked`, except two that must be
+`reachable`: `allowed_host`, a host on the policy's network allowlist, and `git_commit`.
 
     probe.py [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
              [--allowed-url URL] [--other-url URL] [--git-credential HOST]
@@ -71,6 +71,29 @@ def git_credential(host):
     return action
 
 
+def git_commit():
+    """Record a commit in the repository in the current directory, as an agent would. The user's
+    signing and hook settings are switched off: they are not what this probe tests."""
+    result = subprocess.run(["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+                             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+                             "commit", "--allow-empty", "--quiet", "--message", "agent-security probe"],
+                            capture_output=True, timeout=10)
+    if result.returncode:
+        raise PermissionError
+
+
+def create_in(directory):
+    def action():
+        path = os.path.join(directory, f"agent-security-probe-{os.getpid()}")
+        open(path, "w").close()
+        os.remove(path)
+    return action
+
+
+def append_to(path):  # opens for writing, writes nothing
+    return lambda: open(path, "a").close()
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--credential-dir")
 parser.add_argument("--socket")
@@ -79,6 +102,7 @@ parser.add_argument("--allowed-url")
 parser.add_argument("--other-url")
 parser.add_argument("--git-credential")
 args = parser.parse_args()
+in_repository = os.path.isdir(".git")
 
 results = {
     "env_file": attempt(read(".env")),
@@ -90,7 +114,10 @@ results = {
     "network": attempt(reach(args.network)) if args.network else "n/a",
     "other_host": attempt(fetch(args.other_url)) if args.other_url else "n/a",
     "git_credential": attempt(git_credential(args.git_credential)) if args.git_credential else "n/a",
+    "git_hooks": attempt(create_in(".git/hooks")) if in_repository else "n/a",
+    "git_config": attempt(append_to(".git/config")) if in_repository else "n/a",
     "allowed_host": attempt(fetch(args.allowed_url)) if args.allowed_url else "n/a",
+    "git_commit": attempt(git_commit) if in_repository else "n/a",
 }
 for name, state in results.items():
     print(f"{name}={state}")

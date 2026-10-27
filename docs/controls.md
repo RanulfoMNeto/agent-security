@@ -129,13 +129,20 @@ Commands cannot write these paths in either agent: the sandbox confines writes t
 
 | Aspect | Claude Code | Codex |
 |---|---|---|
-| Writes | Project directory and temporary directory | Workspace only; `.git` read-only |
+| Writes | Project directory and temporary directory; `.git/config` and `.git/hooks` read-only | Workspace and temporary directory (`/tmp`, `$TMPDIR`); `.git/config` and `.git/hooks` read-only |
 | Reads | Denied locations blocked; `allowManagedReadPathsOnly: true` prevents users from re-opening a protected path | Denied locations blocked; the rest of the machine readable |
 | Network | Allowed hosts (below); another host after the user approves it | Allowed hosts (below); no other host |
 | Unix sockets | See section 5 | Blocked |
-| Persistence and version-control paths | Native protected paths | Not writable outside the workspace |
+| Persistence and version-control paths | Native protected paths | Not writable outside the workspace; `.agents`, `.codex` and `.aws` in the workspace read-only |
 | Sandbox required | `enabled: true`; `failIfUnavailable: true` (Claude Code exits rather than run unsandboxed) | Managed profile `agent-security`, which extends the built-in `:workspace` |
 | Unsandboxed execution | `allowUnsandboxedCommands: false`, `enableWeakerNestedSandbox: false`, `allowNestedUserNamespaces: false` | Allowed profiles: `agent-security`, `:read-only` |
+
+**`.git`.** Both agents can commit. `config` and `hooks` stay read-only: either can make git run
+a program the next time the user runs git outside the sandbox. Claude Code protects them
+natively. Codex's built-in `:workspace` keeps all of `.git` read-only; profile `agent-security`
+sets `".git" = "write"`, `".git/config" = "read"` and `".git/hooks" = "read"` under
+`:workspace_roots`. When `.git` is a file (a worktree or a submodule), Codex protects the git
+directory it points to, which this rule does not open.
 
 **Allowed hosts.** Hosts that serve source code and packages, where reading needs no credential
 and writing needs one the agent cannot reach (sections 2 and 3):

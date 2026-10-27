@@ -29,6 +29,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 PROJECT=$T/project
 mkdir -p "$PROJECT/a/b/c" "$T/codex-home"
 printf 'SECRET=verify-canary\n' | tee "$PROJECT/.env" > "$PROJECT/a/b/c/.env"
+git -C "$PROJECT" init --quiet   # the probe checks what the agents can do in .git
 
 # assert_result_withheld LABEL OUTPUT EVIDENCE: an agent was asked to print a file holding $TOKEN.
 # The token must not appear, and EVIDENCE (a regex) shows the scanner acted rather than the model.
@@ -58,11 +59,11 @@ reachable_url https://example.com/ && PROBE_ARGS+=(--other-url https://example.c
 [[ -n $(git config --get-all credential.helper 2>/dev/null) ]] && PROBE_ARGS+=(--git-credential github.com)
 
 # assert_probe LABEL OUTPUT: every probe must report blocked (or n/a), except allowed_host, a
-# host on the network allowlist, which must be reachable. The line is looked for anywhere in
-# OUTPUT, because a model that relays the output may reformat it.
+# host on the network allowlist, and git_commit, which must be reachable. The line is looked for
+# anywhere in OUTPUT, because a model that relays the output may reformat it.
 assert_probe() {
   local label=$1 out=$2 probe name expected state
-  for probe in env_file nested_env_file credential_dir write_outside secret_env unix_socket network other_host git_credential allowed_host=reachable; do
+  for probe in env_file nested_env_file credential_dir write_outside secret_env unix_socket network other_host git_credential git_hooks git_config allowed_host=reachable git_commit=reachable; do
     name=${probe%=*} expected=blocked
     [[ $probe == *=* ]] && expected=${probe#*=}
     state=$(grep -oE "(^|[^a-z_])$name=(blocked|reachable|n/a)" <<< "$out" | head -n1 | sed 's/.*=//')
