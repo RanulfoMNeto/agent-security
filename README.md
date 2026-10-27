@@ -14,7 +14,7 @@ credentials with [gitleaks](https://github.com/gitleaks/gitleaks).
 | Credential scanner | Every prompt, tool call and tool result is scanned before it reaches the model or runs. A credential in a prompt or tool call blocks it. In a tool result, Claude Code replaces the credential with `[REDACTED]` and Codex withholds the result |
 | Credential locations | Reading 29 credential locations (SSH, cloud, secret stores, browser profiles, tool and git credentials, shell history) and `.env` files is denied |
 | Environment variables | Secret variables are removed from the commands the agents run |
-| Filesystem | Commands write only in the project directory (Claude Code: and the temporary directory); `.git` is read-only in Codex. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
+| Filesystem | Commands write only in the project directory and the temporary directory. In the project's `.git`, `config` and `hooks` are read-only. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
 | Network | Commands reach code hosting and package registries (24 hosts) through the agent's proxy. Other hosts: Claude Code asks, Codex refuses |
 | Local services | Unix sockets to the user session, D-Bus, Docker, containerd, snapd, libvirt and X11 are closed |
 | Commands | Claude Code denies recursive `rm` |

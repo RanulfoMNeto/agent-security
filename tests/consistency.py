@@ -59,6 +59,11 @@ if codex_env_files != ENV_FILES:
 if sandbox_env_files != ENV_FILES:
     errors.append(f"Claude's sandbox credentials must list exactly {sorted(ENV_FILES)}, found {sorted(sandbox_env_files)}")
 
+# Opening .git in Codex must keep config and hooks read-only, as Claude Code's sandbox does.
+roots = profile.get("filesystem", {}).get(":workspace_roots", {})
+if roots.get(".git") == "write" and not roots.get(".git/config") == roots.get(".git/hooks") == "read":
+    errors.append("codex/config.toml opens .git, so .git/config and .git/hooks must be read")
+
 # Claude Code removes secret variables by exact name. Codex removes names that contain KEY,
 # SECRET or TOKEN (any case) plus its `exclude` patterns; together they must cover Claude's list.
 env_policy = codex_config.get("shell_environment_policy", {})
