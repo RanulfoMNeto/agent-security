@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Check that the policy files are valid and agree with each other.
 
-The credential locations and the allowed network hosts are written twice, in each tool's own
-format. This test keeps the two copies from drifting apart.
+The credential locations, the secret environment variables and the allowed network hosts are
+written twice, in each tool's own format. This test keeps the two copies from drifting apart.
 """
 
+import fnmatch
 import json
 import re
 import sys
@@ -42,7 +43,8 @@ for rule in claude.get("permissions", {}).get("deny", []):
         path = match.group(1).removesuffix("/**")
         claude_reads.add(path[2:] if path.startswith("//") else path)
 codex_denies = set(requirements.get("permissions", {}).get("filesystem", {}).get("deny_read", []))
-profile = load(ROOT / "codex/config.toml").get("permissions", {}).get("agent-security", {})
+codex_config = load(ROOT / "codex/config.toml")
+profile = codex_config.get("permissions", {}).get("agent-security", {})
 codex_env_files = {k for k, v in profile.get("filesystem", {}).get(":workspace_roots", {}).items() if v == "deny"}
 sandbox_env_files = {e["path"] for e in claude.get("sandbox", {}).get("credentials", {}).get("files", [])}
 
@@ -56,6 +58,17 @@ if codex_env_files != ENV_FILES:
     errors.append(f"codex/config.toml must deny exactly {sorted(ENV_FILES)} under :workspace_roots, found {sorted(codex_env_files)}")
 if sandbox_env_files != ENV_FILES:
     errors.append(f"Claude's sandbox credentials must list exactly {sorted(ENV_FILES)}, found {sorted(sandbox_env_files)}")
+
+# Claude Code removes secret variables by exact name. Codex removes names that contain KEY,
+# SECRET or TOKEN (any case) plus its `exclude` patterns; together they must cover Claude's list.
+env_policy = codex_config.get("shell_environment_policy", {})
+if env_policy.get("ignore_default_excludes") is not False:
+    errors.append("codex/config.toml must set shell_environment_policy.ignore_default_excludes = false")
+for entry in claude.get("sandbox", {}).get("credentials", {}).get("envVars", []):
+    name = entry["name"]
+    if not re.search("KEY|SECRET|TOKEN", name, re.IGNORECASE) and not any(
+            fnmatch.fnmatchcase(name.upper(), pattern.upper()) for pattern in env_policy.get("exclude", [])):
+        errors.append(f"{name}: removed for Claude Code but not for Codex")
 
 # The network allowlist is also written once per agent, with the same host patterns. In Codex,
 # only the proxy applies it: a profile with the network on and no proxy reaches every host.

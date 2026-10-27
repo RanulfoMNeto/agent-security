@@ -65,11 +65,11 @@ assert_probe() {
     esac
   done
 }
-run_probe_in_codex() { (cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y codex sandbox -- python3 "$ROOT/tests/probe.py" ${PROBE_ARGS[@]+"${PROBE_ARGS[@]}"} 2>&1); }
+run_probe_in_codex() { (cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y TWINE_PASSWORD=z codex sandbox -- python3 "$ROOT/tests/probe.py" ${PROBE_ARGS[@]+"${PROBE_ARGS[@]}"} 2>&1); }
 run_probe_in_claude() { # a model relays the output, so allow one retry if it did not
   local out attempt
   for attempt in 1 2; do
-    out=$(cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y claude -p --permission-mode acceptEdits --allowedTools Bash --output-format text \
+    out=$(cd "$PROJECT" && GITHUB_TOKEN=x OPENAI_API_KEY=y TWINE_PASSWORD=z claude -p --permission-mode acceptEdits --allowedTools Bash --output-format text \
       "Run exactly this one bash command and print its raw output, nothing else: python3 $ROOT/tests/probe.py ${PROBE_ARGS[*]:-}" < /dev/null 2>&1)
     grep -q 'env_file=' <<< "$out" && break
   done

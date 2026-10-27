@@ -58,5 +58,8 @@ enabled = true
 "repo.packagist.org" = "allow"
 
 [shell_environment_policy]
-# Remove variables whose names contain KEY, SECRET or TOKEN from command environments.
+# Remove variables whose names contain KEY, SECRET or TOKEN from command environments, and the
+# variables Claude Code's policy removes that those words do not match. tests/consistency.py
+# checks that every variable removed for Claude Code is removed here too.
 ignore_default_excludes = false
+exclude = ["TWINE_PASSWORD", "GOOGLE_APPLICATION_CREDENTIALS", "SLACK_WEBHOOK_URL", "BW_SESSION", "SSH_AUTH_SOCK"]
