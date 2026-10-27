@@ -35,6 +35,7 @@ echo "probe:"
 out=$(probe --network "127.0.0.1:$OPEN");   check "reports a connection that succeeds as reachable"  grep -qx 'network=reachable' <<< "$out"
 out=$(probe --network "127.0.0.1:$CLOSED"); check "reports a connection that fails as blocked"       grep -qx 'network=blocked' <<< "$out"
 out=$(probe);                               check "reports n/a when no host is given"                grep -qx 'network=n/a' <<< "$out"
+probe --output "$T/results" > /dev/null;      check "writes the same lines to --output"                diff <(probe) "$T/results"
 out=$(probe --allowed-url "http://127.0.0.1:$WEB/"); check "reports an HTTP answer as reachable"     grep -qx 'allowed_host=reachable' <<< "$out"
 out=$(probe --other-url "http://127.0.0.1:$CLOSED/"); check "reports a failed request as blocked"    grep -qx 'other_host=blocked' <<< "$out"
 
