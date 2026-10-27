@@ -17,10 +17,31 @@ with those in the release's `gitleaks_<version>_checksums.txt`. Then run the com
 
 ## Change or add a rule
 
-Edit the files in the repository. The credential list exists once per agent: the `Read(...)` rules
-in `claude/managed-settings.d/10-agent-security.json` and `deny_read` in `codex/requirements.toml`.
-`./tests/run.sh` fails when they differ. Then run `sudo ./install.sh install` and `./verify.sh`.
-Managed Codex hooks are trusted by policy and need no approval.
+Edit the files in the repository. Three lists exist once per agent, and `./tests/run.sh` fails
+when the two copies differ:
+
+| List | Claude Code (`claude/managed-settings.d/10-agent-security.json`) | Codex |
+|---|---|---|
+| Credential locations | `Read(...)` rules | `deny_read` in `codex/requirements.toml` |
+| Secret variables | `sandbox.credentials.envVars` | Names containing `KEY`, `SECRET` or `TOKEN`, plus `shell_environment_policy.exclude` in `codex/config.toml` |
+| Allowed hosts | `sandbox.network.allowedDomains` | `[permissions.agent-security.network.domains]` in `codex/config.toml` |
+
+Then run `sudo ./install.sh install` and `./verify.sh`. Managed Codex hooks are trusted by policy
+and need no approval.
+
+## Allow another host
+
+The allowlist holds hosts where reading needs no credential and writing needs one the agent
+cannot reach. Users can add hosts for their own sessions:
+
+- **Claude Code:** approve the host when Claude Code asks ("Yes, and don't ask again" keeps it),
+  or add it to `sandbox.network.allowedDomains` in `~/.claude/settings.json`.
+- **Codex:** add `"<host>" = "allow"` under `[permissions.agent-security.network.domains]` in
+  `~/.codex/config.toml`.
+
+`*.example.com` matches subdomains only. Tools that ignore `HTTPS_PROXY` (plain `ssh`, most
+database drivers) cannot reach any host. For an organization, add the host to both lists in the
+repository (see above).
 
 To maintain a customized distribution, fork the repository, keep `./tests/run.sh` passing and
 change what is needed: credential paths, additional Claude Code settings (any `*.json` added to
@@ -28,8 +49,12 @@ change what is needed: credential paths, additional Claude Code settings (any `*
 
 ## Handle a false positive
 
-- **Preferred:** keep the value out of the prompt and the code. Reference it through an
-  environment variable or a secret manager.
+A false positive blocks a prompt or a tool call. In a tool result, Claude Code shows
+`[REDACTED]` in place of the value, and Codex replaces the whole result with the scanner's
+message.
+
+- **Preferred:** keep the value out of the prompt, the code and the files the agent reads.
+  Reference it through an environment variable or a secret manager.
 - **When a value must be allowed:** add an allowlist to `config/gitleaks.toml` (see the
   [gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration)), open a pull
   request and reinstall.
@@ -71,9 +96,9 @@ little quota.
 |---|---|
 | Installation | `install.sh status`: every file is present and owned by root |
 | Scanner | The installed scanner blocks a synthetic credential |
-| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, or a connection to `example.com:443` that succeeds from the user's own terminal |
-| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks |
-| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; Claude Code's bypass mode is disabled |
+| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection, an HTTPS request to a host outside the allowlist (`example.com`), a stored git credential for `github.com`. An HTTPS request to an allowed host (`pypi.org`) is reported `reachable`. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, a host the user's own terminal cannot reach, or a git credential helper |
+| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off |
+| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart` |
 
 ## Ubuntu 24.04+ and AppArmor
 

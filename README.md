@@ -4,18 +4,18 @@ A security baseline for AI coding agents. One installer applies the same set of 
 **Claude Code** and **Codex CLI** on Linux, macOS and WSL2.
 
 The baseline uses the agents' own mechanisms (managed settings, requirements, OS sandboxes,
-permission rules, hooks) and adds one component: a hook that scans for credentials with
-[gitleaks](https://github.com/gitleaks/gitleaks).
+network proxies, permission rules, hooks) and adds one component: a hook that scans for
+credentials with [gitleaks](https://github.com/gitleaks/gitleaks).
 
 ## Controls
 
 | Control | Action |
 |---|---|
-| Credential scanner | Every prompt and every tool call is scanned before it reaches the model or runs. A detected credential blocks it |
-| Credential locations | Reading 27 credential locations (SSH, cloud, secret stores, browser profiles, tool credentials, shell history) and `.env` files is denied |
+| Credential scanner | Every prompt, tool call and tool result is scanned before it reaches the model or runs. A credential in a prompt or tool call blocks it. In a tool result, Claude Code replaces the credential with `[REDACTED]` and Codex withholds the result |
+| Credential locations | Reading 29 credential locations (SSH, cloud, secret stores, browser profiles, tool and git credentials, shell history) and `.env` files is denied |
 | Environment variables | Secret variables are removed from the commands the agents run |
-| Filesystem | Commands write only in the project directory (Claude Code: and the temporary directory); `.git` is read-only in Codex |
-| Network | Commands have no network access (Claude Code: until a host is approved) |
+| Filesystem | Commands write only in the project directory (Claude Code: and the temporary directory); `.git` is read-only in Codex. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
+| Network | Commands reach code hosting and package registries (24 hosts) through the agent's proxy. Other hosts: Claude Code asks, Codex refuses |
 | Local services | Unix sockets to the user session, D-Bus, Docker, containerd, snapd, libvirt and X11 are closed |
 | Commands | Claude Code denies recursive `rm` |
 | Policy integrity | Policy files are owned by root. The sandbox, the hooks and the Codex profile cannot be disabled by users, and Claude Code's bypass mode is disabled |
@@ -70,7 +70,7 @@ All files are copies of repository files, owned by root.
 | Users can | Not changeable by users |
 |---|---|
 | Add hooks, permission rules, MCP servers and project settings | Removing a deny rule, a credential location or a managed hook |
-| Approve a network host when Claude Code asks | Disabling the sandbox, allowing unsandboxed commands, re-opening a protected read path |
+| Approve a network host when Claude Code asks, or add hosts in their own settings ([operations](docs/operations.md#allow-another-host)) | Disabling the sandbox, allowing unsandboxed commands, re-opening a protected read path, turning off Codex's network proxy |
 | Select any permission mode except bypass | Entering `bypassPermissions`, or leaving the Codex managed profile |
 | Use a personal Codex `config.toml` | Loosening the Codex requirements |
 
@@ -83,8 +83,9 @@ Changing or removing the policy requires root.
 | Install stops: "bubblewrap cannot create a sandbox" | Ubuntu 24.04+ restricts user namespaces. See [operations](docs/operations.md#ubuntu-2404-and-apparmor) |
 | Claude Code exits at start: sandbox unavailable | `failIfUnavailable` is enabled. Install `bubblewrap` and `socat`, then see [operations](docs/operations.md#ubuntu-2404-and-apparmor) |
 | Codex: "configuration could not be loaded" | The user's `~/.codex/config.toml` conflicts with the policy, for example by opening `~/.ssh`. Remove that entry |
-| Every prompt or tool call is blocked | The scanner or gitleaks is missing or failing, and the hooks block on failure. Run `./install.sh status`, then `sudo ./install.sh install` |
-| A prompt is blocked and looks like a false positive | See [operations](docs/operations.md#handle-a-false-positive) |
+| Every prompt or tool call is blocked, or Claude Code stops after each tool call | The scanner or gitleaks is missing or failing, and the hooks block on failure. Run `./install.sh status`, then `sudo ./install.sh install` |
+| A prompt is blocked, or a tool result shows `[REDACTED]` or is withheld, and it looks like a false positive | See [operations](docs/operations.md#handle-a-false-positive) |
+| A command cannot reach a host | The host is not on the allowlist, or the tool ignores `HTTPS_PROXY` (plain `ssh`, most database drivers). See [operations](docs/operations.md#allow-another-host) |
 | The agent cannot read `.env.example` | The `.env.*` pattern matches it, and deny rules have no exceptions |
 | Empty `.bashrc`, `.gitconfig`, `.claude/settings.json` appear as untracked files | Claude Code's Linux sandbox creates placeholders for the paths it protects (seen on 2.1.309). Do not commit them. This repository's `.gitignore` hides them; a global gitignore does the same elsewhere |
 
