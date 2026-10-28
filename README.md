@@ -7,6 +7,9 @@ The baseline uses the agents' own mechanisms (managed settings, requirements, OS
 network proxies, permission rules, hooks) and adds one component: a hook that scans for
 credentials with [gitleaks](https://github.com/gitleaks/gitleaks).
 
+For a visual introduction, the [Agent Security guide](https://ranulfomneto.github.io/agent-security-guide/)
+shows how an agent's harness works and where each control acts on it.
+
 ## Controls
 
 | Control | Action |
@@ -91,6 +94,7 @@ Changing or removing the policy requires root.
 
 ## Documentation
 
+- [Guide](https://ranulfomneto.github.io/agent-security-guide/): an animated walkthrough of the agent loop and each control ([source](https://github.com/RanulfoMNeto/agent-security-guide))
 - [Controls](docs/controls.md): every interception, block and restriction, per agent
 - [Operations](docs/operations.md): update, customize, deploy, verify, Ubuntu AppArmor
 - [Contributing](CONTRIBUTING.md): tests, policy files and commit conventions
