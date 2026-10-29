@@ -5,13 +5,12 @@
 # the command line is replaced, or Codex refuses to load the file. They are Codex's
 # equivalent of Claude Code's managed settings.
 #
-# The credential list below mirrors the `Read(...)` rules in
-# claude/managed-settings.d/10-agent-security.json (except the .env rules, which are in
-# config.toml); tests/consistency.py keeps them equal.
+# The credential list, the .env rules and the allowed hosts mirror
+# claude/managed-settings.d/10-agent-security.json; tests/consistency.py keeps them equal.
 
-# Only the profile defined in config.toml and the read-only profile can be used.
-# `:danger-full-access` is left out, which also keeps `--dangerously-bypass-approvals-and-sandbox`
-# from leaving the sandbox.
+# Only the managed profile below can be used; the built-in profiles are left out. Leaving out
+# `:danger-full-access` also keeps `--dangerously-bypass-approvals-and-sandbox` from leaving the
+# sandbox.
 default_permissions = "agent-security"
 
 # No command leaves the sandbox, as with Claude Code's `allowUnsandboxedCommands: false`. The
@@ -25,7 +24,6 @@ allowed_approval_policies = [
 
 [allowed_permission_profiles]
 "agent-security" = true
-":read-only" = true
 
 # Locations no profile, setting or flag can open for reading. `~` is the user's home.
 [permissions.filesystem]
@@ -61,22 +59,103 @@ deny_read = [
   "~/.codex/auth.json",
 ]
 
-# Recursive deletion is refused, as Claude Code's `Bash(rm -r *)` deny rules do.
-# tests/consistency.py keeps the two lists of flags equal.
-[rules]
-prefix_rules = [
-  { pattern = [{ token = "rm" }, { any_of = ["-r", "-rf", "-fr", "-R", "--recursive"] }], decision = "forbidden", justification = "Recursive deletion is denied by the agent-security policy." },
-]
+# This profile is defined only in requirements.toml. Codex rejects a user or project
+# configuration that defines another profile with the same name.
+[permissions.agent-security]
+description = "Workspace and package-cache write access; environment files denied; network limited to code hosting, package registries and hosts the user allows."
+extends = ":workspace"
+
+[permissions.agent-security.filesystem]
+# Codex expands the .env patterns of this profile when a command starts, down to this many
+# directories below the pattern's fixed part. Deeper files are not covered.
+glob_scan_max_depth = 6
+# Environment files (.env, .env.*, and direnv's .envrc) outside the workspace, in the home
+# directory. Codex stops every command when the scan meets a directory it cannot read, so /tmp,
+# which always holds such directories on Linux, is left out (Claude Code covers it).
+"~/**/.env" = "deny"
+"~/**/.env.*" = "deny"
+"~/**/.envrc" = "deny"
+# Package-manager caches, so installs and builds work. Only the cache folders: the tools'
+# settings next to them (~/.gradle/init.d, ~/.m2/settings.xml, ~/.cargo/config.toml, ...) can run
+# code or hold credentials and stay read-only.
+"~/.npm" = "write"
+"~/.cache/yarn" = "write"
+"~/.yarn/berry/cache" = "write"
+"~/.local/share/pnpm/store" = "write"
+"~/.bun/install/cache" = "write"
+"~/.cache/pip" = "write"
+"~/.cache/uv" = "write"
+"~/.cache/pypoetry" = "write"
+"~/.cargo/registry" = "write"
+"~/.cargo/git" = "write"
+"~/go/pkg/mod" = "write"
+"~/.cache/go-build" = "write"
+"~/.m2/repository" = "write"
+"~/.gradle/caches" = "write"
+"~/.gradle/wrapper" = "write"
+"~/.nuget/packages" = "write"
+"~/.cache/composer" = "write"
+"~/Library/Caches/Yarn" = "write"
+"~/Library/pnpm/store" = "write"
+"~/Library/Caches/pip" = "write"
+"~/Library/Caches/pypoetry" = "write"
+"~/Library/Caches/go-build" = "write"
+"~/Library/Caches/composer" = "write"
+
+# Environment files anywhere in the workspace. Open .git for commits, keeping configuration and
+# automatic scripts read-only.
+[permissions.agent-security.filesystem.":workspace_roots"]
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+"**/.envrc" = "deny"
+".git" = "write"
+".git/config" = "read"
+".git/hooks" = "read"
+
+[permissions.agent-security.network]
+enabled = true
+
+# Commands reach the network only through Codex's managed proxy, which allows these hosts, the
+# same patterns as Claude Code's sandbox.network.allowedDomains. `*.` matches subdomains only.
+# Users can add hosts with `network_rule(...)` in a rules file of their own (~/.codex/rules/), but
+# cannot turn the proxy off or open local addresses, local sockets or the proxy's listener.
+[experimental_network]
+enabled = true
+managed_allowed_domains_only = false
+allow_local_binding = false
+dangerously_allow_all_unix_sockets = false
+dangerously_allow_non_loopback_proxy = false
+
+[experimental_network.domains]
+"github.com" = "allow"
+"*.github.com" = "allow"
+"*.githubusercontent.com" = "allow"
+"gitlab.com" = "allow"
+"registry.npmjs.org" = "allow"
+"registry.yarnpkg.com" = "allow"
+"repo.yarnpkg.com" = "allow"
+"pypi.org" = "allow"
+"files.pythonhosted.org" = "allow"
+"crates.io" = "allow"
+"index.crates.io" = "allow"
+"static.crates.io" = "allow"
+"static.rust-lang.org" = "allow"
+"proxy.golang.org" = "allow"
+"sum.golang.org" = "allow"
+"rubygems.org" = "allow"
+"index.rubygems.org" = "allow"
+"repo.maven.apache.org" = "allow"
+"repo1.maven.org" = "allow"
+"plugins.gradle.org" = "allow"
+"services.gradle.org" = "allow"
+"downloads.gradle.org" = "allow"
+"api.nuget.org" = "allow"
+"repo.packagist.org" = "allow"
 
 # Managed hooks run without the per-user /hooks trust step and cannot be disabled by users,
 # who can still add their own hooks next to them.
-#
-# The agent-security profile turns command network access on, and only the network proxy
-# applies its domain rules: without the proxy, those commands would reach every host. Pinning
-# the feature here keeps users from turning the proxy off.
 [features]
 hooks = true
-network_proxy = true
 
 [hooks]
 managed_dir = "/opt/agent-security/bin"

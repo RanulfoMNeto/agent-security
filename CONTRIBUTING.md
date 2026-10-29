@@ -10,7 +10,8 @@
 
 ## Policy files
 
-- The credential locations, the secret variables and the allowed hosts exist once per agent
+- The credential locations, the secret variables, the environment-file patterns, the writable
+  caches and the allowed hosts exist once per agent
   ([operations](docs/operations.md#change-or-add-a-rule) lists where). Change both.
   `tests/consistency.py` fails when they differ.
 - Codex files must start with `# Managed by agent-security.`.

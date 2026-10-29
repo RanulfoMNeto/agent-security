@@ -5,6 +5,7 @@
     "deny": [
       "Read(//**/.env)",
       "Read(//**/.env.*)",
+      "Read(//**/.envrc)",
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.azure/**)",
@@ -44,12 +45,7 @@
       "Edit(~/.config/git/config)",
       "Edit(~/.ssh/**)",
       "Edit(~/.config/autostart/**)",
-      "Edit(~/Library/LaunchAgents/**)",
-      "Bash(rm -r *)",
-      "Bash(rm -rf *)",
-      "Bash(rm -fr *)",
-      "Bash(rm -R *)",
-      "Bash(rm --recursive *)"
+      "Edit(~/Library/LaunchAgents/**)"
     ]
   },
   "sandbox": {
@@ -59,7 +55,40 @@
     "enableWeakerNestedSandbox": false,
     "allowNestedUserNamespaces": false,
     "filesystem": {
-      "allowManagedReadPathsOnly": true
+      "allowManagedReadPathsOnly": true,
+      "denyRead": [
+        "~/**/.env",
+        "~/**/.env.*",
+        "/tmp/**/.env",
+        "/tmp/**/.env.*",
+        "~/**/.envrc",
+        "/tmp/**/.envrc"
+      ],
+      "allowWrite": [
+        "~/.npm",
+        "~/.cache/yarn",
+        "~/.yarn/berry/cache",
+        "~/.local/share/pnpm/store",
+        "~/.bun/install/cache",
+        "~/.cache/pip",
+        "~/.cache/uv",
+        "~/.cache/pypoetry",
+        "~/.cargo/registry",
+        "~/.cargo/git",
+        "~/go/pkg/mod",
+        "~/.cache/go-build",
+        "~/.m2/repository",
+        "~/.gradle/caches",
+        "~/.gradle/wrapper",
+        "~/.nuget/packages",
+        "~/.cache/composer",
+        "~/Library/Caches/Yarn",
+        "~/Library/pnpm/store",
+        "~/Library/Caches/pip",
+        "~/Library/Caches/pypoetry",
+        "~/Library/Caches/go-build",
+        "~/Library/Caches/composer"
+      ]
     },
     "network": {
       "allowedDomains": [
@@ -92,7 +121,8 @@
     "credentials": {
       "files": [
         { "path": "**/.env", "mode": "deny" },
-        { "path": "**/.env.*", "mode": "deny" }
+        { "path": "**/.env.*", "mode": "deny" },
+        { "path": "**/.envrc", "mode": "deny" }
       ],
       "envVars": [
         { "name": "ANTHROPIC_API_KEY", "mode": "deny" },

@@ -33,9 +33,9 @@ for pattern in ("claude/**/*.json", "codex/*.toml", "config/*.toml"):
 claude = load(ROOT / "claude/managed-settings.d/10-agent-security.json")
 requirements = load(ROOT / "codex/requirements.toml")
 
-# Spell both lists the same way: "~/x" for a location. Environment files are handled apart:
-# Codex only applies their globs from the profile in config.toml, not from requirements.toml.
-ENV_FILES = {"**/.env", "**/.env.*"}
+# Spell both lists the same way: "~/x" for a location. In Codex, environment-file patterns
+# belong to the managed permission profile, where :workspace_roots resolves them in each workspace.
+ENV_FILES = {"**/.env", "**/.env.*", "**/.envrc"}
 claude_reads = set()
 for rule in claude.get("permissions", {}).get("deny", []):
     match = re.fullmatch(r"Read\((.*)\)", rule)
@@ -44,7 +44,7 @@ for rule in claude.get("permissions", {}).get("deny", []):
         claude_reads.add(path[2:] if path.startswith("//") else path)
 codex_denies = set(requirements.get("permissions", {}).get("filesystem", {}).get("deny_read", []))
 codex_config = load(ROOT / "codex/config.toml")
-profile = codex_config.get("permissions", {}).get("agent-security", {})
+profile = requirements.get("permissions", {}).get("agent-security", {})
 codex_env_files = {k for k, v in profile.get("filesystem", {}).get(":workspace_roots", {}).items() if v == "deny"}
 sandbox_env_files = {e["path"] for e in claude.get("sandbox", {}).get("credentials", {}).get("files", [])}
 
@@ -53,16 +53,30 @@ for path in sorted(claude_reads - ENV_FILES - codex_denies):
 for path in sorted(codex_denies - claude_reads):
     errors.append(f"{path}: denied for Codex but not for Claude Code")
 if not ENV_FILES <= claude_reads:
-    errors.append("Claude Code must deny reading **/.env and **/.env.*")
+    errors.append(f"Claude Code must deny reading {sorted(ENV_FILES)}")
 if codex_env_files != ENV_FILES:
-    errors.append(f"codex/config.toml must deny exactly {sorted(ENV_FILES)} under :workspace_roots, found {sorted(codex_env_files)}")
+    errors.append(f"the managed Codex profile must deny exactly {sorted(ENV_FILES)} under :workspace_roots, found {sorted(codex_env_files)}")
 if sandbox_env_files != ENV_FILES:
     errors.append(f"Claude's sandbox credentials must list exactly {sorted(ENV_FILES)}, found {sorted(sandbox_env_files)}")
+
+# Outside the project, the Linux sandboxes only expand patterns below a fixed directory, so the
+# home and temporary directories are listed one by one. Codex cannot scan /tmp (its scan stops at
+# directories it cannot read), so it has the same patterns without the /tmp ones.
+claude_outside = set(claude.get("sandbox", {}).get("filesystem", {}).get("denyRead", []))
+codex_outside = {k for k, v in profile.get("filesystem", {}).items() if v == "deny"}
+if not claude_outside or {p for p in claude_outside if not p.startswith("/tmp/")} != codex_outside:
+    errors.append(f".env patterns outside the project differ: Claude Code {sorted(claude_outside)}, Codex {sorted(codex_outside)}")
+
+# Package-manager caches are writable in both agents, with the same paths.
+claude_caches = set(claude.get("sandbox", {}).get("filesystem", {}).get("allowWrite", []))
+codex_caches = {k for k, v in profile.get("filesystem", {}).items() if v == "write"}
+if not claude_caches or claude_caches != codex_caches:
+    errors.append(f"writable caches differ: only Claude Code {sorted(claude_caches - codex_caches)}, only Codex {sorted(codex_caches - claude_caches)}")
 
 # Opening .git in Codex must keep config and hooks read-only, as Claude Code's sandbox does.
 roots = profile.get("filesystem", {}).get(":workspace_roots", {})
 if roots.get(".git") == "write" and not roots.get(".git/config") == roots.get(".git/hooks") == "read":
-    errors.append("codex/config.toml opens .git, so .git/config and .git/hooks must be read")
+    errors.append("the managed Codex profile opens .git, so .git/config and .git/hooks must be read")
 
 # Claude Code removes secret variables by exact name. Codex removes names that contain KEY,
 # SECRET or TOKEN (any case) plus its `exclude` patterns; together they must cover Claude's list.
@@ -76,14 +90,14 @@ for entry in claude.get("sandbox", {}).get("credentials", {}).get("envVars", [])
         errors.append(f"{name}: removed for Claude Code but not for Codex")
 
 # The network allowlist is also written once per agent, with the same host patterns. In Codex,
-# only the proxy applies it: a profile with the network on and no proxy reaches every host.
+# only the managed proxy applies it: a profile with the network on and no proxy reaches every host.
 claude_hosts = claude.get("sandbox", {}).get("network", {}).get("allowedDomains", [])
-codex_network = profile.get("network", {})
+codex_network = requirements.get("experimental_network", {})
 codex_hosts = [host for host, rule in codex_network.get("domains", {}).items() if rule == "allow"]
 if not claude_hosts or sorted(claude_hosts) != sorted(codex_hosts):
     errors.append("the allowed hosts must be the same for Claude Code and Codex")
-if codex_network.get("enabled") and requirements.get("features", {}).get("network_proxy") is not True:
-    errors.append("the Codex profile turns the network on, so requirements.toml must pin features.network_proxy")
+if profile.get("network", {}).get("enabled") and codex_network.get("enabled") is not True:
+    errors.append("the Codex profile turns the network on, so requirements.toml must enable experimental_network")
 
 # No Codex command may leave the sandbox (Claude Code: allowUnsandboxedCommands is false), so
 # every allowed approval policy asks nothing or rejects sandbox escalation prompts.
@@ -95,15 +109,6 @@ for policy in allowed_policies:
         errors.append(f"requirements.toml allows an approval policy with sandbox escalation: {policy}")
 if not allowed_policies or codex_config.get("approval_policy") not in allowed_policies:
     errors.append("codex/config.toml must set an approval_policy that requirements.toml allows")
-
-# Recursive deletion is denied in both agents, with the same flags.
-claude_rm = {m.group(1) for rule in claude.get("permissions", {}).get("deny", [])
-             if (m := re.fullmatch(r"Bash\(rm (\S+) \*\)", rule))}
-codex_rm = {flag for rule in requirements.get("rules", {}).get("prefix_rules", [])
-            if rule.get("decision") == "forbidden" and rule["pattern"][:1] == [{"token": "rm"}]
-            for flag in rule["pattern"][1].get("any_of", [])}
-if not claude_rm or claude_rm != codex_rm:
-    errors.append(f"recursive rm flags differ: Claude Code {sorted(claude_rm)}, Codex {sorted(codex_rm)}")
 
 # Both agents call the same scanner, and Claude Code must block when the hook cannot run.
 hooks = [h for groups in claude.get("hooks", {}).values() for g in groups for h in g["hooks"]]

@@ -17,27 +17,38 @@ with those in the release's `gitleaks_<version>_checksums.txt`. Then run the com
 
 ## Change or add a rule
 
-Edit the files in the repository. Three lists exist once per agent, and `./tests/run.sh` fails
+Edit the files in the repository. Five lists exist once per agent, and `./tests/run.sh` fails
 when the two copies differ:
 
 | List | Claude Code (`claude/managed-settings.d/10-agent-security.json`) | Codex |
 |---|---|---|
 | Credential locations | `Read(...)` rules | `deny_read` in `codex/requirements.toml` |
 | Secret variables | `sandbox.credentials.envVars` | Names containing `KEY`, `SECRET` or `TOKEN`, plus `shell_environment_policy.exclude` in `codex/config.toml` |
-| Allowed hosts | `sandbox.network.allowedDomains` | `[permissions.agent-security.network.domains]` in `codex/config.toml` |
+| Environment-file patterns outside the project | `sandbox.filesystem.denyRead` | `"deny"` entries in `[permissions.agent-security.filesystem]` in `codex/requirements.toml` |
+| Package-manager caches | `sandbox.filesystem.allowWrite` | `"write"` entries in `[permissions.agent-security.filesystem]` in `codex/requirements.toml` |
+| Allowed hosts | `sandbox.network.allowedDomains` | `[experimental_network.domains]` in `codex/requirements.toml` |
 
 Then run `sudo ./install.sh install` and `./verify.sh`. Managed Codex hooks are trusted by policy
 and need no approval.
 
+The complete Codex permission profile is defined in `requirements.toml`. Keep it out of user
+and project `config.toml` files: Codex rejects another definition with the same name. When
+upgrading from the earlier layout, remove any personal `[permissions.agent-security]` sections;
+the installer replaces the old system definition in `/etc/codex/config.toml` automatically.
+
 ## Allow another host
 
-The allowlist holds hosts where reading needs no credential and writing needs one the agent
-cannot reach. Users can add hosts for their own sessions:
+The allowlist holds code-hosting and package-registry hosts. Users can add hosts for their own
+sessions; the managed hosts and the rest of the policy stay in place:
 
 - **Claude Code:** approve the host when Claude Code asks ("Yes, and don't ask again" keeps it),
   or add it to `sandbox.network.allowedDomains` in `~/.claude/settings.json`.
-- **Codex:** Codex refuses the host without asking. Add `"<host>" = "allow"` under
-  `[permissions.agent-security.network.domains]` in `~/.codex/config.toml` and restart Codex.
+- **Codex:** Codex refuses the host without asking. Add a rule to a file in `~/.codex/rules/`,
+  for example `~/.codex/rules/hosts.rules`, and restart Codex:
+
+  ```python
+  network_rule(host="<host>", protocol="https", decision="allow")
+  ```
 
 `*.example.com` matches subdomains only. Tools that ignore `HTTPS_PROXY` (plain `ssh`, most
 database drivers) cannot reach any host. For an organization, add the host to both lists in the
@@ -96,9 +107,9 @@ little quota.
 |---|---|
 | Installation | `install.sh status`: every file is present and owned by root |
 | Scanner | The installed scanner accepts a harmless prompt over a socket and detects a synthetic credential; scanner errors do not count as detection |
-| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` in the project, `.env` three directories deep, a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection, an HTTPS request to a host outside the allowlist (`example.com`), a stored git credential for `github.com`, a file created in `.git/hooks`, `.git/config` opened for writing. An HTTPS request to an allowed host (`pypi.org`) and a commit in the test project are reported `reachable`. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, a host the user's own terminal cannot reach, or a git credential helper |
-| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user setting that re-opens `~/.ssh` is refused; a user cannot select the full-access profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off; the approval policy rejects sandbox escalation and a user cannot turn it back on |
-| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart` or run `rm -rf` |
+| Sandbox probe (`tests/probe.py`, in the Codex sandbox; with `--live`, also in Claude Code) | Each of these is reported `blocked`: `.env` and `.envrc` in the project, `.env` three directories deep, `.env` and `.envrc` in another repository in the home directory and in `/tmp` (Codex: home only, see [controls](controls.md#2-credential-locations-read-denied)), a credential directory, a write outside the project, a secret environment variable, a Unix socket, a direct network connection, an HTTPS request to a host outside the allowlist (`example.com`), a stored git credential for `github.com`, a file created in `.git/hooks`, `.git/config` opened for writing. An HTTPS request to an allowed host (`pypi.org`), a commit in the test project and a file created in a package-manager cache (the first of `~/.npm`, `~/.cache/pip`, `~/.m2/repository`, `~/.cargo/registry`, `~/go/pkg/mod` that exists) are reported `reachable`. A probe is reported `n/a` when its target is absent: `~/.ssh`, the session bus, a host the user's own terminal cannot reach, a git credential helper, or a package-manager cache |
+| Codex policy (`codex doctor --json`) | The managed policy is loaded from `/etc/codex`; the filesystem sandbox is restricted; no deny-rule warnings; a user cannot redefine the managed permission profile; a user cannot select the full-access or read-only profile; a user cannot disable the managed hooks; the network proxy is configured and a user cannot turn it off; the approval policy rejects sandbox escalation and a user cannot turn it back on |
+| Live sessions (`--live`) | A prompt containing a credential is blocked in Claude Code and in Codex; a credential in a file the agent prints does not reach the model (Claude Code shows `[REDACTED]`, Codex withholds the result); Claude Code's bypass mode is disabled; neither agent can create an entry in `~/.config/autostart`; in Codex, a host allowed in a rules file of the user's (`example.com`, removed afterwards) is reachable |
 
 ## Every Claude Code prompt is blocked with a stdin error
 
