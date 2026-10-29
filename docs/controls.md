@@ -8,8 +8,10 @@ processes they start. They do not apply to the user's own terminal or editor.
 - **Claude Code.** Managed settings apply above user, project, local and command-line settings.
   The files in `managed-settings.d/` are merged in alphabetical order. Other levels can only add.
 - **Codex.** `requirements.toml` takes precedence over the user's `~/.codex/config.toml` and over
-  command-line options. `/etc/codex/config.toml` is the system layer; the user's file is merged
-  on top of it.
+  command-line options. It defines the managed `agent-security` permission profile; a user or
+  project config that defines the same profile is rejected. `/etc/codex/config.toml` contains
+  only defaults for approvals and shell environment filtering; user configuration is merged
+  on top, subject to the requirements.
 
 ## 1. Credential scanner (interception)
 
@@ -81,16 +83,17 @@ Twenty-nine locations are denied in both agents.
 - **Claude Code:** `permissions.deny` entries `Read(<path>)` (`Read(<path>/**)` for directories).
   Claude Code applies them to its file tools and merges them into the OS sandbox, so they also
   bind every command the agent runs.
-- **Codex:** `permissions.filesystem.deny_read` in `requirements.toml`, enforced by the OS sandbox
-  in every profile.
+- **Codex:** `permissions.filesystem.deny_read` in `requirements.toml`, enforced by the OS
+  sandbox.
 
-**Environment files** (`**/.env`, `**/.env.*`, which includes `.env.example`; deny rules have no
-exceptions):
+**Environment files** (`.env`; `.env.*`, which includes `.env.example`; direnv's `.envrc`; deny
+rules have no exceptions), in the project and in the home directory, and for Claude Code also in
+`/tmp`:
 
 | | Mechanism |
 |---|---|
-| Claude Code | `Read(//**/.env)` and `Read(//**/.env.*)`: Claude Code's file tools anywhere on the machine, and the file commands it recognizes. `sandbox.credentials.files` (`deny`): every command, in the project directory tree at any depth |
-| Codex | Profile `agent-security`: `deny` for both patterns under `:workspace_roots`, scanned to a depth of 6 directories (`glob_scan_max_depth`). The rule is in `config.toml` because Codex applies `**/.env` globs only from a profile |
+| Claude Code | `Read(//**/.env)`, `Read(//**/.env.*)` and `Read(//**/.envrc)`: Claude Code's file tools anywhere on the machine, and the file commands it recognizes. For every command: `sandbox.credentials.files` (`deny`) with `**/.env`, `**/.env.*` and `**/.envrc`, in the project directory tree at any depth; `sandbox.filesystem.denyRead` with the same three names under `~/**/` and `/tmp/**/`. On Linux, the sandbox expands a pattern only below a fixed directory, so `/**/.env` would cover nothing |
+| Codex | Managed profile `agent-security` in `requirements.toml`: `deny` for `**/.env`, `**/.env.*` and `**/.envrc` under `:workspace_roots`, and for the same three names under `~/**/`. Codex expands the patterns when a command starts, to a depth of 6 directories below each pattern's fixed part (`glob_scan_max_depth`). A directory it cannot read within that depth stops every command, by design; `/tmp` always holds such directories on Linux (`systemd-private-*`), so Codex does not cover it |
 
 **Startup files** (write denied, Claude Code). `permissions.deny` entries `Edit(<path>)` stop
 Claude Code's file tools (Write, Edit, NotebookEdit) from changing files that run commands at
@@ -102,8 +105,8 @@ login or configure git and SSH, in every permission mode and when the user appro
 | Git and SSH | `~/.gitconfig`, `~/.config/git/config`, `~/.ssh/**` |
 | Autostart | `~/.config/autostart/**`, `~/Library/LaunchAgents/**` |
 
-Commands cannot write these paths in either agent: the sandbox confines writes to the project
-(section 4).
+Commands cannot write these paths in either agent: the sandbox confines writes to the project,
+the temporary directory and the package-manager caches (section 4).
 
 ## 3. Environment variables
 
@@ -123,19 +126,21 @@ Commands cannot write these paths in either agent: the sandbox confines writes t
 - **Codex:** `shell_environment_policy` with `ignore_default_excludes = false` removes every
   variable whose name contains `KEY`, `SECRET` or `TOKEN`, in any case. `exclude` also removes
   `TWINE_PASSWORD`, `GOOGLE_APPLICATION_CREDENTIALS`, `SLACK_WEBHOOK_URL`, `BW_SESSION` and
-  `SSH_AUTH_SOCK`, the names on Claude Code's list that those words do not match.
+  `SSH_AUTH_SOCK`, the names on Claude Code's list that those words do not match. This is a
+  default in `config.toml` that user configuration can override: Codex's requirements format
+  has no `shell_environment_policy` field.
 
 ## 4. Sandbox
 
 | Aspect | Claude Code | Codex |
 |---|---|---|
-| Writes | Project directory and temporary directory; `.git/config` and `.git/hooks` read-only | Workspace and temporary directory (`/tmp`, `$TMPDIR`); `.git/config` and `.git/hooks` read-only |
+| Writes | Project directory, temporary directory and package-manager caches (below); `.git/config` and `.git/hooks` read-only | Workspace, temporary directory (`/tmp`, `$TMPDIR`) and package-manager caches (below); `.git/config` and `.git/hooks` read-only |
 | Reads | Denied locations blocked; `allowManagedReadPathsOnly: true` prevents users from re-opening a protected path | Denied locations blocked; the rest of the machine readable |
-| Network | Allowed hosts (below); another host after the user approves it | Allowed hosts (below); no other host |
+| Network | Allowed hosts (below); another host after the user approves it | Allowed hosts (below) and hosts the user adds; no other host |
 | Unix sockets | See section 5 | Blocked |
-| Persistence and version-control paths | Native protected paths | Not writable outside the workspace; `.agents`, `.codex` and `.aws` in the workspace read-only |
+| Persistence and version-control paths | Native protected paths | Not writable outside the paths above; `.agents`, `.codex` and `.aws` in the workspace read-only |
 | Sandbox required | `enabled: true`; `failIfUnavailable: true` (Claude Code exits rather than run unsandboxed) | Managed profile `agent-security`, which extends the built-in `:workspace` |
-| Unsandboxed execution | `allowUnsandboxedCommands: false`, `enableWeakerNestedSandbox: false`, `allowNestedUserNamespaces: false` | Allowed profiles: `agent-security`, `:read-only`. No sandbox escalation prompts (section 7) |
+| Unsandboxed execution | `allowUnsandboxedCommands: false`, `enableWeakerNestedSandbox: false`, `allowNestedUserNamespaces: false` | Allowed profile: `agent-security`. No sandbox escalation prompts (section 6) |
 
 **`.git`.** Both agents can commit. `config` and `hooks` stay read-only: either can make git run
 a program the next time the user runs git outside the sandbox. Claude Code protects them
@@ -144,8 +149,23 @@ sets `".git" = "write"`, `".git/config" = "read"` and `".git/hooks" = "read"` un
 `:workspace_roots`. When `.git` is a file (a worktree or a submodule), Codex protects the git
 directory it points to, which this rule does not open.
 
-**Allowed hosts.** Hosts that serve source code and packages, where reading needs no credential
-and writing needs one the agent cannot reach (sections 2 and 3):
+**Package-manager caches.** Writable so that installs and builds work. Claude Code:
+`sandbox.filesystem.allowWrite`; Codex: `"write"` entries in the managed profile. Only the cache
+folders are listed: the tools' settings next to them (`~/.gradle/init.d`, `~/.m2/settings.xml`,
+`~/.cargo/config.toml`) can run code or hold credentials and stay read-only.
+A package changed in a cache is used by later installs outside the agent; npm and Go verify
+package checksums, other tools less so.
+
+| Ecosystem | Paths |
+|---|---|
+| JavaScript | `~/.npm`, `~/.cache/yarn`, `~/.yarn/berry/cache`, `~/.local/share/pnpm/store`, `~/.bun/install/cache`; macOS: `~/Library/Caches/Yarn`, `~/Library/pnpm/store` |
+| Python | `~/.cache/pip`, `~/.cache/uv`, `~/.cache/pypoetry`; macOS: `~/Library/Caches/pip`, `~/Library/Caches/pypoetry` |
+| Rust | `~/.cargo/registry`, `~/.cargo/git` |
+| Go | `~/go/pkg/mod`, `~/.cache/go-build`; macOS: `~/Library/Caches/go-build` |
+| Java | `~/.m2/repository`, `~/.gradle/caches`, `~/.gradle/wrapper` |
+| .NET and PHP | `~/.nuget/packages`, `~/.cache/composer`; macOS: `~/Library/Caches/composer` |
+
+**Allowed hosts.** Hosts used to retrieve source code and packages:
 
 | Category | Hosts |
 |---|---|
@@ -165,11 +185,15 @@ and writing needs one the agent cannot reach (sections 2 and 3):
 - **Claude Code:** `sandbox.network.allowedDomains`, every port of each host.
   `allowManagedDomainsOnly` is not set: for another host, Claude Code asks the user, and hosts in
   the user's own settings are added to the list.
-- **Codex:** profile `agent-security`, `[permissions.agent-security.network]` with
-  `enabled = true` and the hosts as `allow` under `domains`. Only the network proxy applies these
-  rules, and a profile with the network on and no proxy reaches every host; `requirements.toml`
-  pins `[features] network_proxy = true` so that users cannot turn the proxy off. Codex's proxy
-  refuses local and private addresses.
+- **Codex:** the managed profile turns the network on (`[permissions.agent-security.network]`
+  `enabled = true`), and `[experimental_network]` in `requirements.toml` starts Codex's managed
+  proxy with the hosts as `allow` under `domains`. A profile with the network on and no proxy
+  reaches every host; users cannot turn the managed proxy off. `managed_allowed_domains_only =
+  false` lets hosts allowed by `network_rule(...)` in rules files join the list: the user's
+  `~/.codex/rules/`, or a project's `.codex/rules/` once the user trusts that project. While a
+  permission profile is active, Codex ignores `[features.network_proxy] domains`.
+  `allow_local_binding = false` keeps local and private addresses refused;
+  `dangerously_allow_all_unix_sockets` and `dangerously_allow_non_loopback_proxy` are `false`.
 - The list applies to commands. Tools the agents run themselves (Claude Code's WebFetch and
   WebSearch, Codex's web search) follow each agent's own permission rules.
 
@@ -192,27 +216,22 @@ and writing needs one the agent cannot reach (sections 2 and 3):
 
 - **Codex:** the sandbox blocks Unix sockets.
 
-## 6. Command rules
-
-- **Claude Code:** `permissions.deny` contains `Bash(rm -r *)`, `Bash(rm -rf *)`, `Bash(rm -fr *)`,
-  `Bash(rm -R *)` and `Bash(rm --recursive *)`. The rules match the command text as submitted.
-- **Codex:** `requirements.toml` `[rules] prefix_rules`: `rm` followed by `-r`, `-rf`, `-fr`, `-R`
-  or `--recursive` is `forbidden`. The rule matches the command's first two arguments.
-
-## 7. Permission mode and profile
+## 6. Permission mode and profile
 
 - **Claude Code:** `permissions.disableBypassPermissionsMode: "disable"` removes
   `bypassPermissions`. Every other permission mode remains available.
-- **Codex:** `default_permissions = "agent-security"`. `allowed_permission_profiles` lists
-  `agent-security` and `:read-only`; `:danger-full-access` is excluded, which also keeps
-  `--dangerously-bypass-approvals-and-sandbox` from leaving the sandbox.
+- **Codex:** `default_permissions = "agent-security"`. `allowed_permission_profiles` lists only
+  `agent-security`: the built-in profiles are excluded. Excluding `:danger-full-access` also keeps
+  `--dangerously-bypass-approvals-and-sandbox` from leaving the sandbox. The complete
+  `agent-security` profile is defined in `requirements.toml`; redefining it in a user or project
+  config is an error.
 - **Codex approvals:** `allowed_approval_policies` allows `never` and a granular policy, set as
   the default in `config.toml`: on-request with `sandbox_approval = false`. Codex then rejects,
   without asking, every request to run a command outside the sandbox, the request it makes when
   the proxy refuses a host. Other approval prompts (rules, MCP elicitations, permission requests,
   skill scripts) remain. Claude Code's equivalent is `allowUnsandboxedCommands: false`.
 
-## 8. Installation integrity
+## 7. Installation integrity
 
 - Every policy file is validated (JSON with `jq`, TOML with `tomllib`) before anything is changed.
 - gitleaks is downloaded from the release (or a configured mirror) and checked against the SHA-256
@@ -229,8 +248,9 @@ and writing needs one the agent cannot reach (sections 2 and 3):
 
 - Claude Code settings are strict JSON and cannot hold comments; the reasons for non-obvious
   choices are recorded in this document.
-- The credential locations, the secret variables and the allowed hosts exist once per agent, in
-  each agent's format. `tests/consistency.py` fails when the two differ.
+- The credential locations, the secret variables, the `.env` patterns, the writable caches and
+  the allowed hosts exist once per agent, in each agent's format. `tests/consistency.py` fails
+  when the two differ.
 - `sandbox.credentials.envVars` accepts exact names only; patterns are rejected.
 - A managed settings file that cannot be parsed is not applied and Claude Code refuses to start,
   hence the validation step of the installer.

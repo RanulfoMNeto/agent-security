@@ -48,6 +48,16 @@ check "reports a writable .git/config as reachable" grep -qx 'git_config=reachab
 out=$(cd "$T/.git" && HOME=$T python3 "$ROOT/tests/probe.py")
 check "reports n/a for the git probes outside a repository" grep -qx 'git_commit=n/a' <<< "$out"
 
+printf 'X=1\n' > "$T/outside.env"
+out=$(probe --outside-env "$T/missing.env" --outside-env "$T/outside.env"); check "reports an outside .env as reachable if any can be read" grep -qx 'outside_env_file=reachable' <<< "$out"
+out=$(probe --outside-env "$T/missing.env"); check "reports outside .env files that cannot be read as blocked" grep -qx 'outside_env_file=blocked' <<< "$out"
+out=$(probe);                               check "reports n/a when no outside .env is given"        grep -qx 'outside_env_file=n/a' <<< "$out"
+
+mkdir -p "$T/cache"
+out=$(probe --cache-dir "$T/cache");        check "reports a writable cache as reachable"            grep -qx 'package_cache=reachable' <<< "$out"
+out=$(probe --cache-dir "$T/no-cache");     check "reports a cache it cannot write as blocked"       grep -qx 'package_cache=blocked' <<< "$out"
+out=$(probe);                               check "reports n/a when no cache is given"               grep -qx 'package_cache=n/a' <<< "$out"
+
 out=$(probe --git-credential example.com);  check "reports no stored git credential as blocked"      grep -qx 'git_credential=blocked' <<< "$out"
 printf '[credential]\n\thelper = "!f() { echo username=u; echo password=p; }; f"\n' > "$T/.gitconfig"
 out=$(probe --git-credential example.com);  check "reports a stored git credential as reachable"     grep -qx 'git_credential=reachable' <<< "$out"

@@ -1,75 +1,14 @@
 # Managed by agent-security. install.sh refuses to overwrite a file without this line.
 #
-# Installed to /etc/codex/config.toml, Codex's system configuration layer; each user's own
-# ~/.codex/config.toml is merged on top. Anything users must not change is enforced in
-# requirements.toml instead, which also selects this profile and denies the credential
-# locations. The environment-file rules below must live here: Codex does not apply `**/.env`
-# globs from requirements.toml.
+# Installed to /etc/codex/config.toml. These are defaults that user configuration can override,
+# within the limits in requirements.toml. The permission profile is defined only there.
 
 # On-request approvals without sandbox escalation prompts; requirements.toml allows only this
 # policy and `never`.
 approval_policy = { granular = { sandbox_approval = false, rules = true, mcp_elicitations = true, request_permissions = true, skill_approval = true } }
 
-[permissions.agent-security]
-description = "Workspace write access; environment files denied, credential locations denied by requirements.toml; network limited to code hosting and package registries."
-# Built-in behaviour: read the machine, write only the workspace and the temporary directory,
-# .git read-only, network off. The sections below open .git except its config and hooks, and turn
-# the network on, through the proxy only.
-extends = ":workspace"
-
-[permissions.agent-security.filesystem]
-# On Linux, Codex expands the `**` of the .env rules below by walking each workspace when a
-# command starts. Without a limit that walk is unbounded (and Codex warns), so cap it.
-# Environment files nested deeper than this many directories are not covered.
-glob_scan_max_depth = 6
-
-# Environment files inside every workspace root, including .env.example and similar.
-#
-# `:workspace` keeps the whole `.git` read-only, so the agent could not commit. Open it as
-# Claude Code's sandbox does, except `config` and `hooks`: either can make git run a program the
-# next time the user runs git outside the sandbox.
-[permissions.agent-security.filesystem.":workspace_roots"]
-"**/.env" = "deny"
-"**/.env.*" = "deny"
-".git" = "write"
-".git/config" = "read"
-".git/hooks" = "read"
-
-# Commands reach the network through Codex's proxy, which allows only these hosts: code hosting
-# and package registries, where reading needs no credential and writing needs one the agent
-# cannot reach. requirements.toml keeps the proxy on. The list mirrors `sandbox.network.
-# allowedDomains` in claude/managed-settings.d/10-agent-security.json; tests/consistency.py
-# keeps them equal. `*.` matches subdomains only, so apex hosts are listed on their own.
-[permissions.agent-security.network]
-enabled = true
-
-[permissions.agent-security.network.domains]
-"github.com" = "allow"
-"*.github.com" = "allow"
-"*.githubusercontent.com" = "allow"
-"gitlab.com" = "allow"
-"registry.npmjs.org" = "allow"
-"registry.yarnpkg.com" = "allow"
-"repo.yarnpkg.com" = "allow"
-"pypi.org" = "allow"
-"files.pythonhosted.org" = "allow"
-"crates.io" = "allow"
-"index.crates.io" = "allow"
-"static.crates.io" = "allow"
-"static.rust-lang.org" = "allow"
-"proxy.golang.org" = "allow"
-"sum.golang.org" = "allow"
-"rubygems.org" = "allow"
-"index.rubygems.org" = "allow"
-"repo.maven.apache.org" = "allow"
-"repo1.maven.org" = "allow"
-"plugins.gradle.org" = "allow"
-"services.gradle.org" = "allow"
-"downloads.gradle.org" = "allow"
-"api.nuget.org" = "allow"
-"repo.packagist.org" = "allow"
-
 [shell_environment_policy]
+# Codex requirements do not support shell_environment_policy; keep this default here.
 # Remove variables whose names contain KEY, SECRET or TOKEN from command environments, and the
 # variables Claude Code's policy removes that those words do not match. tests/consistency.py
 # checks that every variable removed for Claude Code is removed here too.

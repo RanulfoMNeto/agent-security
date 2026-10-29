@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Try the things an agent's shell must or must not be able to do. Used by verify.sh.
 
-Run it inside an agent's sandbox, in a git repository that contains `.env` and `a/b/c/.env`.
+Run it inside an agent's sandbox, in a git repository that contains `.env`, `.envrc` and
+`a/b/c/.env`. --outside-env names environment files outside that repository, such as in another
+project.
 It prints one `name=state` line per probe, where state is `blocked`, `reachable` or `n/a`
-(nothing to test on this machine). Every probe must report `blocked`, except two that must be
-`reachable`: `allowed_host`, a host on the policy's network allowlist, and `git_commit`.
+(nothing to test on this machine). Every probe must report `blocked`, except three that must be
+`reachable`: `allowed_host`, a host on the policy's network allowlist, `git_commit`, and
+`package_cache`, a file created in a package manager's cache.
 
-    probe.py [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
-             [--allowed-url URL] [--other-url URL] [--git-credential HOST] [--output FILE]
+    probe.py [--outside-env PATH]... [--credential-dir PATH] [--socket PATH] [--network HOST:PORT]
+             [--allowed-url URL] [--other-url URL] [--git-credential HOST] [--cache-dir PATH]
+             [--output FILE]
 
 With --output, the lines are also written to FILE, so a caller can read them without relying on
 an agent to relay the output.
@@ -31,6 +35,11 @@ def attempt(action):
 
 def read(path):
     return lambda: open(path).read()
+
+
+def read_any(paths):
+    """reachable when any of PATHS can be read."""
+    return "reachable" if any(attempt(read(path)) == "reachable" for path in paths) else "blocked"
 
 
 def write_outside():
@@ -98,19 +107,22 @@ def append_to(path):  # opens for writing, writes nothing
 
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--outside-env", action="append", default=[])
 parser.add_argument("--credential-dir")
 parser.add_argument("--socket")
 parser.add_argument("--network")
 parser.add_argument("--allowed-url")
 parser.add_argument("--other-url")
 parser.add_argument("--git-credential")
+parser.add_argument("--cache-dir")
 parser.add_argument("--output")
 args = parser.parse_args()
 in_repository = os.path.isdir(".git")
 
 results = {
-    "env_file": attempt(read(".env")),
+    "env_file": read_any([".env", ".envrc"]),
     "nested_env_file": attempt(read("a/b/c/.env")),
+    "outside_env_file": read_any(args.outside_env) if args.outside_env else "n/a",
     "credential_dir": attempt(lambda: os.listdir(args.credential_dir) or (_ for _ in ()).throw(PermissionError())) if args.credential_dir else "n/a",
     "write_outside": attempt(write_outside),
     "secret_env": "reachable" if any(os.environ.get(name) for name in ("GITHUB_TOKEN", "OPENAI_API_KEY", "TWINE_PASSWORD")) else "blocked",
@@ -122,6 +134,7 @@ results = {
     "git_config": attempt(append_to(".git/config")) if in_repository else "n/a",
     "allowed_host": attempt(fetch(args.allowed_url)) if args.allowed_url else "n/a",
     "git_commit": attempt(git_commit) if in_repository else "n/a",
+    "package_cache": attempt(create_in(args.cache_dir)) if args.cache_dir else "n/a",
 }
 lines = [f"{name}={state}" for name, state in results.items()]
 print("\n".join(lines))

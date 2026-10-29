@@ -15,13 +15,12 @@ shows how an agent's harness works and where each control acts on it.
 | Control | Action |
 |---|---|
 | Credential scanner | Every prompt, tool call and tool result is scanned before it reaches the model or runs. A credential in a prompt or tool call blocks it. In a tool result, Claude Code replaces the credential with `[REDACTED]` and Codex withholds the result |
-| Credential locations | Reading 29 credential locations (SSH, cloud, secret stores, browser profiles, tool and git credentials, shell history) and `.env` files is denied |
+| Credential locations | Reading 29 credential locations (SSH, cloud, secret stores, browser profiles, tool and git credentials, shell history) and environment files (`.env`, `.env.*`, `.envrc`) in the project and the home directory (Claude Code: also `/tmp`) is denied |
 | Environment variables | Secret variables are removed from the commands the agents run |
-| Filesystem | Commands write only in the project directory and the temporary directory. In the project's `.git`, `config` and `hooks` are read-only. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
-| Network | Commands reach code hosting and package registries (24 hosts) through the agent's proxy. Other hosts: Claude Code asks, Codex refuses |
+| Filesystem | Commands write only in the project directory, the temporary directory and package-manager caches. In the project's `.git`, `config` and `hooks` are read-only. Claude Code's file tools cannot change shell startup files, git configuration, `~/.ssh` or autostart entries |
+| Network | Commands reach code hosting and package registries (24 hosts) through the agent's proxy. Users can add hosts; Claude Code also asks for the others, Codex refuses them |
 | Local services | Unix sockets to the user session, D-Bus, Docker, containerd, snapd, libvirt and X11 are closed |
-| Commands | Recursive `rm` is denied |
-| Policy integrity | Policy files are owned by root. The sandbox, the hooks and the Codex profile cannot be disabled by users, Claude Code's bypass mode is disabled, and no command can run outside the sandbox |
+| Policy integrity | Policy files are owned by root. Users cannot redefine the managed Codex profile or disable the required hooks and proxy. Claude Code's bypass mode is disabled, and no command can run outside the sandbox |
 
 The exact rules, paths and variable names are in [controls](docs/controls.md).
 
@@ -66,18 +65,23 @@ All files are copies of repository files, owned by root.
 | `/opt/agent-security/bin/agent-secret-scan` | `bin/` | Hook called by both agents |
 | `/opt/agent-security/bin/gitleaks`, `etc/gitleaks.toml` | Release download verified against `config/gitleaks.release`; `config/` | Secret detection |
 | `/etc/claude-code/managed-settings.d/` (macOS: `/Library/Application Support/ClaudeCode/managed-settings.d/`) | `claude/managed-settings.d/*.json`; `claude/overlays/*.json` where required | Claude Code policy |
-| `/etc/codex/config.toml`, `/etc/codex/requirements.toml` | `codex/` | Codex profile and enforced requirements |
+| `/etc/codex/requirements.toml` | `codex/requirements.toml` | Codex permission profile and mandatory controls |
+| `/etc/codex/config.toml` | `codex/config.toml` | Default approval policy and shell environment filtering |
 
 ## User configuration
 
 | Users can | Not changeable by users |
 |---|---|
 | Add hooks, permission rules, MCP servers and project settings | Removing a deny rule, a credential location or a managed hook |
-| Approve a network host when Claude Code asks, or add hosts in their own settings ([operations](docs/operations.md#allow-another-host)) | Disabling the sandbox, allowing unsandboxed commands, re-opening a protected read path, turning off Codex's network proxy |
-| Select any permission mode except bypass | Entering `bypassPermissions`, leaving the Codex managed profile, or letting Codex ask to run a command outside the sandbox |
+| Add network hosts in their own settings, or approve one when Claude Code asks ([operations](docs/operations.md#allow-another-host)) | Changing the managed Codex profile, removing a managed host, or turning off Codex's network proxy |
+| Select Claude Code modes except bypass | Entering `bypassPermissions`, selecting a Codex profile other than `agent-security`, or running a command outside the sandbox |
 | Use a personal Codex `config.toml` | Loosening the Codex requirements |
 
-Changing or removing the policy requires root.
+Changing or removing the installed policy files requires root.
+
+Codex's `config.toml` contains defaults, not mandatory requirements. Its environment-variable
+filter can be changed by user configuration; Codex does not support that setting in
+`requirements.toml`.
 
 ## Troubleshooting
 
@@ -85,10 +89,11 @@ Changing or removing the policy requires root.
 |---|---|
 | Install stops: "bubblewrap cannot create a sandbox" | Ubuntu 24.04+ restricts user namespaces. See [operations](docs/operations.md#ubuntu-2404-and-apparmor) |
 | Claude Code exits at start: sandbox unavailable | `failIfUnavailable` is enabled. Install `bubblewrap` and `socat`, then see [operations](docs/operations.md#ubuntu-2404-and-apparmor) |
-| Codex: "configuration could not be loaded" | The user's `~/.codex/config.toml` conflicts with the policy, for example by opening `~/.ssh`. Remove that entry |
+| Codex: "configuration could not be loaded" | A user or project config redefines `[permissions.agent-security]`, or conflicts with a mandatory rule. Remove the conflicting definition; the managed profile is defined in `requirements.toml` |
 | Every prompt or tool call is blocked, or Claude Code stops after each tool call | The scanner or gitleaks is missing or failing, and the hooks block on failure. Run `./install.sh status`, then `sudo ./install.sh install` |
 | A prompt is blocked, or a tool result shows `[REDACTED]` or is withheld, and it looks like a false positive | See [operations](docs/operations.md#handle-a-false-positive) |
 | A command cannot reach a host | The host is not on the allowlist, or the tool ignores `HTTPS_PROXY` (plain `ssh`, most database drivers). See [operations](docs/operations.md#allow-another-host) |
+| Codex: every command fails with `ripgrep unreadable glob scan failed for /home/...` | A directory in the home directory, up to 5 levels deep, cannot be read by the user (often a container's data directory), and Codex stops rather than skip it while it looks for environment files. Find it with `find ~ -mindepth 1 -maxdepth 5 -type d ! -readable`, then make it readable or move it out of the home directory (for container data, a named volume) |
 | The agent cannot read `.env.example` | The `.env.*` pattern matches it, and deny rules have no exceptions |
 | Empty `.bashrc`, `.gitconfig`, `.claude/settings.json` appear as untracked files | Claude Code's Linux sandbox creates placeholders for the paths it protects (seen on 2.1.309). Do not commit them. This repository's `.gitignore` hides them; a global gitignore does the same elsewhere |
 
